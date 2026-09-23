@@ -40,9 +40,10 @@ pip install -r requirements.txt
 # every table in the paper, numbered as the paper numbers them
 python analysis/table_1.py  --format text     # LongBench, all three backbones
 python analysis/table_2.py  --format text     # correction vs. selector ablation
-python analysis/table_6.py  --format text     # budget sweep
-python analysis/table_11.py --format text     # cache-selection control
-for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
+python analysis/table_7.py  --format text     # budget sweep
+python analysis/table_3.py  --format text     # accuracy against cost
+python analysis/table_12.py --format text     # cache-selection control
+for n in $(seq 1 16); do
     python analysis/table_$n.py --out analysis/out/table_$n.tex
 done
 
@@ -54,6 +55,10 @@ python analysis/figure_4.py    # per-cell and per-document verification
 Figure 2 is the architecture diagram and has no script. One further table,
 `analysis/appendix_lambda_candidates.py`, renders a comparison the paper
 reports as prose rather than as a numbered table.
+
+Table numbers shift whenever a table is added to the body, so
+`python tests/test_numbering.py --tex paper.tex` checks that every
+`analysis/table_<n>.py` still generates the paper's table `<n>`.
 
 
 `--format latex` emits the table as it appears in the paper; `--out PATH`

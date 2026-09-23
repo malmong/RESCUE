@@ -1,19 +1,16 @@
 #!/usr/bin/env python
-"""Table 13 (tab:selector_quadrants). What the selector's decisions are worth.
+"""Table 13 (tab:selector_margin). When the selector's signal is reliable.
 
-The one-token probe picks the retrospectively better cache on only a little over
-half the documents where the two arms differ, yet it recovers a large share of
-the oracle headroom. Accuracy alone cannot explain that: a decision's value is
-the size of the score difference it captures or forfeits, not whether it was
-right.
+The selector picks the retrospectively better cache on 55.6% of the deciding
+documents, and its KL margin correlates with the realized score change at only
+rho=+0.11. Both are averages over a quantity that varies by four orders of
+magnitude, so they describe the selector where it has no signal as much as where
+it has one.
 
-Two asymmetries carry the result. Rejecting returns the base cache, so a wrong
-rejection forfeits an available gain but never causes a loss. And among the
-accepts, the right ones are on larger differences than the wrong ones.
-
-Documents whose selector score matches neither arm are excluded: the selector
-serves one of the two caches, so a third score means the run does not line up
-with either arm and the decision cannot be read.
+Splitting the deciding documents by the size of the selector's own margin
+separates the two regimes: near chance where the probe carries no information,
+meaningfully better where it does -- and the second regime is where the large
+score differences are.
 
     python analysis/table_13.py --format text
 """
@@ -28,98 +25,83 @@ from data import LATEX_FOOTER, REPO_ROOT, latex_header, write
 
 PER_DOC = REPO_ROOT / "results" / "per_document.csv"
 TOL = 1e-9
-LABELS = [
-    ((True, True), "Accept, correction better", "right"),
-    ((True, False), "Accept, base better", "wrong"),
-    ((False, True), "Reject, base better", "right"),
-    ((False, False), "Reject, correction better", "wrong"),
-]
+QUINTILES = 5
 
 
-def collect(model: str):
+def load(model: str):
+    """(|margin|, accepted, right, realized gain) per deciding document.
+
+    A document counts only where the two caches score differently, the
+    selector's score matches one of them, and a margin was logged.
+    """
     if not PER_DOC.exists():
         raise SystemExit(f"{PER_DOC} not found; run scripts/export_per_document.py")
-    quad: dict[tuple[bool, bool], list[float]] = {k: [] for k, _l, _r in LABELS}
-    gains: dict[tuple[bool, bool], list[float]] = {k: [] for k, _l, _r in LABELS}
-    unmatched = same = 0
+    out = []
     with open(PER_DOC, encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
-            if r["model"] != model:
+            if r["model"] != model or not r["kl_margin"]:
                 continue
             b, c, s = (float(r["score_base"]), float(r["score_corr"]),
                        float(r["score_selector"]))
             if abs(c - b) <= TOL:
-                same += 1
                 continue
             near_c, near_b = abs(s - c) <= TOL, abs(s - b) <= TOL
             if not (near_c or near_b):
-                unmatched += 1
                 continue
-            accepted = near_c
-            right = (c > b) == accepted
-            quad[(accepted, right)].append(abs(c - b))
-            # Rejecting serves the base cache, so it moves nothing; only an
-            # accept contributes, and its sign is whether it was right.
-            gains[(accepted, right)].append((c - b) if accepted else 0.0)
-    return quad, gains, unmatched, same
+            # Rejecting serves the base cache, so only an accept moves the score.
+            out.append((abs(float(r["kl_margin"])), near_c, (c > b) == near_c,
+                        (c - b) if near_c else 0.0))
+    out.sort()
+    return out
 
 
 def rows(model: str):
-    quad, gains, unmatched, same = collect(model)
-    total = sum(len(v) for v in quad.values())
-    for key, label, verdict in LABELS:
-        n = len(quad[key])
-        yield (label, verdict, n,
-               100 * n / total if total else 0.0,
-               st.mean(quad[key]) if n else 0.0,
-               sum(gains[key]) / total if total else 0.0)
-    right = sum(len(quad[k]) for k, _l, v in LABELS if v == "right")
-    net = sum(sum(g) for g in gains.values()) / total if total else 0.0
-    # "%" is a comment character in LaTeX; the text renderer strips the escape.
-    yield ("Net", f"{100 * right / total:.1f}\\% right" if total else "--",
-           total, 100.0, float("nan"), net)
-    yield ("__meta__", "", unmatched, float(same), float("nan"), float("nan"))
+    d = load(model)
+    n = len(d)
+    for i in range(QUINTILES):
+        g = d[i * n // QUINTILES:(i + 1) * n // QUINTILES]
+        yield (i + 1, g[0][0], g[-1][0], len(g),
+               100 * sum(1 for *_, ok, _ in g if ok) / len(g),
+               100 * sum(1 for _, a, _, _ in g if a) / len(g),
+               st.mean([x for *_, x in g]))
+    yield (None, d[0][0], d[-1][0], n,
+           100 * sum(1 for *_, ok, _ in d if ok) / n,
+           100 * sum(1 for _, a, _, _ in d if a) / n,
+           st.mean([x for *_, x in d]))
 
 
 def text(model: str) -> str:
-    lines = [f"{model}  --  selector decisions where the two caches differ",
-             f"  {'decision':34s} {'n':>6s} {'share':>7s} {'mean |d|':>9s} {'contribution':>13s}"]
-    for label, verdict, n, share, mag, contrib in rows(model):
-        if label == "__meta__":
-            lines.append(f"\n  excluded: {n} documents whose selector score matched "
-                         f"neither arm, and {int(share)} where the two caches scored "
-                         f"the same")
-            continue
-        if label == "Net":
-            lines.append(f"  {'-' * 70}")
-            lines.append(f"  {'Net':34s} {n:6d} {verdict.replace(chr(92) + '%', '%'):>12s} "
-                         f"{'--':>9s} {contrib:+13.2f}")
-            continue
-        lines.append(f"  {label + ' (' + verdict + ')':34s} {n:6d} {share:6.1f}% "
-                     f"{mag:9.2f} {contrib:+13.2f}")
+    lines = [f"{model}  --  selector behaviour by the size of its own margin",
+             f"  {'quintile':10s} {'|margin| range':>24s} {'n':>5s} {'acc':>7s} "
+             f"{'accepts':>8s} {'gain/doc':>9s}"]
+    for q, lo, hi, n, acc, accept, gain in rows(model):
+        lines.append(f"  {('all' if q is None else f'Q{q}'):10s} "
+                     f"{f'{lo:.2e} - {hi:.2e}':>24s} {n:5d} {acc:6.1f}% "
+                     f"{accept:7.1f}% {gain:+9.2f}")
     return "\n".join(lines)
 
 
 def latex(model: str) -> str:
+    rs = list(rows(model))
     out = [latex_header(
-        "Selector decisions on the documents where the base and corrected caches score "
-        "differently. Rejecting returns the base cache, so rejections contribute nothing "
-        "to the gain over the base policy --- a wrong rejection forfeits the difference "
-        "rather than losing it. Mean $|\\Delta|$ is the average absolute score difference "
-        "between the two arms in that outcome.",
-        "tab:selector_quadrants", "lrrrr"),
-        r"\textbf{Decision} & \textbf{$n$} & \textbf{Share} & \textbf{Mean $|\Delta|$} "
-        r"& \textbf{Contribution} \\", r"\midrule"]
-    for label, verdict, n, share, mag, contrib in rows(model):
-        if label == "__meta__":
-            continue
-        if label == "Net":
+        "Selector behaviour by the size of its own margin, over the deciding documents "
+        "that carry a logged margin, in equal fifths. Accuracy is agreement with "
+        "hindsight; the gain is realized points per document, which is zero on a "
+        "rejection by construction.",
+        "tab:selector_margin", "lrrrr"),
+        r"\textbf{Margin quintile} & \textbf{Range} & \textbf{Accuracy} & "
+        r"\textbf{Accepts} & \textbf{Gain / doc} \\", r"\midrule"]
+    names = {1: "Q1 (smallest)", 5: f"Q{QUINTILES} (largest)"}
+    for q, lo, hi, _n, acc, accept, gain in rs:
+        if q is None:
             out.append(r"\midrule")
-            out.append(f"Net & {n} & {verdict} & --- & ${contrib:+.2f}$ \\\\")
+            out.append(f"All & --- & ${acc:.1f}\\%$ & ${accept:.1f}\\%$ & ${gain:+.2f}$ \\\\")
             continue
-        c = f"${contrib:+.2f}$" if abs(contrib) > 1e-9 else r"\phantom{$+$}0.00"
-        out.append(f"{label} \\emph{{({verdict})}} & {n} & {share:.1f}\\% & "
-                   f"{mag:.2f} & {c} \\\\")
+        rng = (f"$<{hi:.1e}$" if q == 1 else
+               f"$>{lo:.1e}$" if q == QUINTILES else f"${lo:.1e}$--${hi:.1e}$")
+        bold = (lambda x: f"$\\mathbf{{{x}}}$") if q == QUINTILES else (lambda x: f"${x}$")
+        out.append(f"{names.get(q, f'Q{q}')} & {rng} & {bold(f'{acc:.1f}')}\\% & "
+                   f"${accept:.1f}\\%$ & {bold(f'{gain:+.2f}')} \\\\")
     out.append(LATEX_FOOTER)
     return "\n".join(out)
 

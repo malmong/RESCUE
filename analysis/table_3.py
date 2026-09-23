@@ -1,21 +1,17 @@
 #!/usr/bin/env python
-"""Table 3 (tab:mechanism).
+"""Table 3 (tab:pareto). Accuracy against cost, next to simply raising the budget.
 
-Does the correction recover what the base policy actually missed?
+The comparison a deployment faces is not RESCUE against another eviction rule at
+the same budget, but RESCUE against spending the same resources on a larger
+cache. Putting both on the same axes is not favourable and the table says so:
+a deployment that can afford twice the cache should spend it there.
 
-Two set-level quantities per base policy, against the downstream gain:
+What it also shows is where that stops. RESCUE's overhead is flat in the budget
+-- the cost is building and replaying the candidate caches, which scales with
+the prompt rather than with how much of it is kept -- while the gain is not. The
+same fixed price buys less and less, which is what fixes the operating point.
 
-    delta coverage   how much more of the oracle future-attention top-B set the
-                     corrected cache retains than the base cache does
-    rescue recall    the share of that base's own miss set the scorer brings back
-
-They order the base policies the same way the downstream gain does at the top
-and diverge at the bottom, which is the point: coverage is necessary and not
-sufficient, because an entry recovered at the cost of one the base had right is
-a wash.
-
-Set-level numbers come from results/measurements/mechanism.csv; the downstream
-column is computed from results/scores.csv.
+Latency comes from results/latency.csv; scores from results/scores.csv.
 
     python analysis/table_3.py --format text
 """
@@ -26,47 +22,82 @@ import csv
 import statistics as st
 from pathlib import Path
 
-from data import (BASE_LABEL, LATEX_FOOTER, REPO_ROOT, Scores, latex_header,
-                    write)
+from data import LATEX_FOOTER, REPO_ROOT, Scores, latex_header, write
 
-DATA = REPO_ROOT / "results" / "measurements" / "mechanism.csv"
+LATENCY = REPO_ROOT / "results" / "latency.csv"
+BASE = "snapkv"
+BUDGETS = (128, 256, 1024)
+
+
+def latency() -> dict[tuple[str, int], float]:
+    """Median added logic per document, by (arm, budget)."""
+    if not LATENCY.exists():
+        raise SystemExit(f"{LATENCY} not found; run scripts/run_latency.sh")
+    out: dict[tuple[str, int], float] = {}
+    with open(LATENCY, encoding="utf-8") as fh:
+        for r in csv.DictReader(l for l in fh if not l.startswith("#")):
+            arm = "base" if r["method"] == "snapkv" else (
+                "rescue" if r["method"] == "rescue" else None)
+            if arm is None:
+                continue
+            # rescue has a `total` row per probe length; this table is the
+            # shipped one-token selector.
+            if arm == "rescue" and r["probe_len"] not in ("", "1"):
+                continue
+            comp = r["component"]
+            if comp == "total":
+                out[(arm, 128)] = float(r["ms"])
+            elif comp.startswith("total_b"):
+                out[(arm, int(comp.removeprefix("total_b")))] = float(r["ms"])
+    return out
 
 
 def rows(sc: Scores, model: str):
-    if not DATA.exists():
-        raise SystemExit(f"{DATA} not found; run scripts/measurements/coverage.py")
-    with open(DATA, encoding="utf-8") as fh:
-        meas = list(csv.DictReader(
-            line for line in fh if not line.startswith("#")))
-    for r in meas:
-        b = r["base"]
-        pair = sc.paired(model, "base", "rescue", b)
-        down = st.mean([v - u for _t, u, v in pair]) if pair else None
-        yield b, float(r["delta_coverage_pt"]), float(r["rescue_recall_pct"]), down
+    lat = latency()
+    for arm, label in (("base", "SnapKV"), ("rescue", "RESCUE")):
+        for b in BUDGETS:
+            vals = sc.sweep(model, arm, BASE, b)
+            if not vals:
+                continue
+            yield label, b, st.mean(list(vals.values())), lat.get((arm, b))
 
 
 def text(sc: Scores, model: str) -> str:
-    lines = [f"{model}  --  set-level coverage against the downstream gain, B=128",
-             f"  {'base':8s} {'d coverage':>11s} {'rescue recall':>14s} {'downstream':>11s}"]
-    for b, cov, rec, down in rows(sc, model):
-        d = f"{down:+11.2f}" if down is not None else f"{'--':>11s}"
-        lines.append(f"  {BASE_LABEL[b]:8s} {cov:+10.1f}pt {rec:13.1f}% {d}")
+    rs = list(rows(sc, model))
+    lines = [f"{model}  --  accuracy against cost, SnapKV base",
+             f"  {'method':8s} {'B':>5s} {'score':>7s} {'added logic':>12s} {'retained':>9s}"]
+    for label, b, s_, ms in rs:
+        lines.append(f"  {label:8s} {b:5d} {s_:7.2f} "
+                     f"{'--' if ms is None else f'{ms:.1f} ms':>12s} {b:9d}")
+    ref = [r for r in rs if r[0] == "RESCUE" and r[1] == 128]
+    if ref:
+        _, _, rs_, rt = ref[0]
+        lines.append("\n  against RESCUE at B=128:")
+        for label, b, s_, ms in rs:
+            if (label, b) == ("RESCUE", 128) or ms is None:
+                continue
+            lines.append(f"    {label}@{b:<5d} score {s_ - rs_:+6.2f}   "
+                         f"latency {ms - rt:+8.1f} ms   cache {b / 128:.0f}x")
     return "\n".join(lines)
 
 
 def latex(sc: Scores, model: str) -> str:
+    rs = list(rows(sc, model))
+    best = max(s_ for _l, _b, s_, _m in rs)
     out = [latex_header(
-        "Set-level effect of the correction per base policy, against its downstream "
-        "gain, at a $128$-token budget. $\\Delta$Coverage is the change in the share of "
-        "the oracle future-attention top-$B$ set the cache retains; rescue recall is the "
-        "share of that policy's own miss set the scorer brings back.",
-        "tab:mechanism", "lccc"),
-        r"\textbf{Base} & \textbf{$\Delta$Coverage} & \textbf{Rescue recall} & "
-        r"\textbf{Downstream $\Delta$} \\", r"\midrule"]
-    for b, cov, rec, down in rows(sc, model):
-        d = f"${down:+.2f}$" if down is not None else r"\LBmissing"
-        pad = r"\phantom{0}" if rec < 10 else ""
-        out.append(f"{BASE_LABEL[b]} & ${cov:+.1f}$ pt & {pad}${rec:.1f}\\%$ & {d} \\\\")
+        "Accuracy against cost, with SnapKV as the base. Scores are the 16-task LongBench "
+        "mean; added logic is the median eviction- and selection-related latency per "
+        "document on Qasper. Retained entries per layer is what the cache costs for the "
+        "whole of decoding.",
+        "tab:pareto", "lrrr"),
+        r"\textbf{Method} & \textbf{Score} & \textbf{Added logic} & "
+        r"\textbf{Retained / layer} \\", r"\midrule"]
+    for i, (label, b, s_, ms) in enumerate(rs):
+        if i and rs[i - 1][0] != label:
+            out.append(r"\midrule")
+        cell = f"\\textbf{{{s_:.2f}}}" if s_ == best else f"{s_:.2f}"
+        lat = "--" if ms is None else f"{ms:.1f}" + r"\,ms"
+        out.append(f"{label}, $B{{=}}{b}$ & {cell} & {lat} & {b} \\\\")
     out.append(LATEX_FOOTER)
     return "\n".join(out)
 

@@ -1,68 +1,76 @@
 #!/usr/bin/env python
-"""Table 9 (tab:task_decomp_table).
+"""Table 9 (tab:runtime_overhead). What the selector costs, and where.
 
-Where the correction earns, and where the selector earns.
+RESCUE is about twice the most expensive predicted-future method it is compared
+against, not less than it: this is accuracy bought with latency, not latency
+saved. Almost none of the cost is the scorer -- it is building and replaying one
+pruned cache per candidate lambda, which is why the number of candidates, not
+the size of the model, is what the cost scales with.
 
-The two components do not help the same tasks. On tasks the correction already
-handles, the selector's job is to stay out of the way and it costs a little; on
-the tasks the correction damages, the selector is the whole result. Reporting
-one average hides both halves, which is why the paper reports this split.
+Read from results/latency.csv, which scripts/run_latency.sh regenerates.
 
-Both columns are averaged over the five base policies, so each row is a task
-rather than a cell.
-
-    python analysis/table_9.py --format text
+    python analysis/table_8.py --format text
 """
 from __future__ import annotations
 
 import argparse
-import statistics as st
+import csv
 from pathlib import Path
 
-from data import BASES, LATEX_FOOTER, Scores, TASK_LABEL, latex_header, write
-from rescue.models import LONGBENCH_TASKS
+from data import LATEX_FOOTER, REPO_ROOT, latex_header, write
+
+LATENCY = REPO_ROOT / "results" / "latency.csv"
+ROWS = [
+    ("snapkv", "", "total", "SnapKV", 0),
+    ("lookaheadkv", "", "total", "LookaheadKV$^{\\dagger}$", 0),
+    ("foresightkv", "", "total", "ForesightKV", 0),
+    ("rescue_corr", "", "total", "RESCUE correction only", 0),
+    ("rescue", "1", "total", "RESCUE + 1-token selector", 0),
+    ("rescue", "1", "probe", "dense probe", 1),
+    ("rescue", "1", "candidates", "two candidate caches", 1),
+]
 
 
-def rows(sc: Scores, model: str):
-    out = []
-    for t in LONGBENCH_TASKS:
-        base = [sc.get(model, "base", b, 128, t) for b in BASES]
-        corr = [sc.get(model, "rescue_ungated", b, 128, t) for b in BASES]
-        sel = [sc.get(model, "rescue", b, 128, t) for b in BASES]
-        if any(x is None for x in base + corr + sel):
-            continue
-        c = st.mean([x - y for x, y in zip(corr, base)])
-        s = st.mean([x - y for x, y in zip(sel, base)])
-        out.append((t, c, s, s - c))
-    out.sort(key=lambda r: -r[2])
+def load() -> dict[tuple[str, str, str], float]:
+    if not LATENCY.exists():
+        raise SystemExit(f"{LATENCY} not found; run scripts/run_latency.sh")
+    out = {}
+    with open(LATENCY, encoding="utf-8") as fh:
+        for r in csv.DictReader(line for line in fh if not line.startswith("#")):
+            out[(r["method"], r["probe_len"], r["component"])] = float(r["ms"])
     return out
 
 
-def text(sc: Scores, model: str) -> str:
-    rs = rows(sc, model)
-    lines = [f"{model}  --  correction and selector, by task (mean over five base policies)",
-             f"  {'task':21s} {'correction':>11s} {'selector':>9s} {'selector - corr':>16s}"]
-    for t, c, s, d in rs:
-        lines.append(f"  {TASK_LABEL[t]:21s} {c:+11.2f} {s:+9.2f} {d:+16.2f}")
-    if rs:
-        helped = [r for r in rs if r[3] > 0]
-        lines.append(f"\n  selector improves {len(helped)}/{len(rs)} tasks; "
-                     f"mean correction {st.mean([r[1] for r in rs]):+.2f}, "
-                     f"mean selector {st.mean([r[2] for r in rs]):+.2f}")
+def text() -> str:
+    d = load()
+    lines = ["Added logic per document, median, Llama-3.1-8B-Instruct on Qasper",
+             f"  {'method':34s} {'ms':>8s}"]
+    for method, probe, comp, label, indent in ROWS:
+        v = d.get((method, probe, comp))
+        if v is None:
+            continue
+        lines.append(f"  {'  ' * indent + label:34s} {v:8.1f}")
     return "\n".join(lines)
 
 
-def latex(sc: Scores, model: str) -> str:
+def latex() -> str:
+    d = load()
     out = [latex_header(
-        "The correction and the selector, decomposed by task. Both columns are gains "
-        "over the base policy at a $128$-token budget, averaged over the five base "
-        "policies. The two do not overlap: the selector costs a little where the "
-        "correction already works and is the entire result where it does not.",
-        "tab:task_decomp_table", "lccc"),
-        r"\textbf{Task} & \textbf{Correction only} & \textbf{Selector} & "
-        r"\textbf{Selector $-$ correction} \\", r"\midrule"]
-    for t, c, s, d in rows(sc, model):
-        out.append(f"{TASK_LABEL[t]} & ${c:+.2f}$ & ${s:+.2f}$ & ${d:+.2f}$ \\\\")
+        "Eviction- and selection-related latency per document, median over $200$ Qasper "
+        "documents at $\\sim$5K tokens on Llama-3.1-8B-Instruct. Prefill and generation "
+        "are excluded; see the latency protocol for what the interval covers. "
+        "$^{\\dagger}$LookaheadKV runs its own decoder path, so its figure is measured "
+        "differently and is not directly comparable.",
+        "tab:runtime_overhead", "lr"),
+        r"\textbf{Method} & \textbf{Latency} \\", r"\midrule"]
+    for method, probe, comp, label, indent in ROWS:
+        v = d.get((method, probe, comp))
+        if v is None:
+            continue
+        if indent:
+            out.append(f"\\quad \\emph{{{label}}} & \\emph{{{v:.1f} ms}} \\\\")
+        else:
+            out.append(f"{label} & {v:.1f} ms \\\\")
     out.append(LATEX_FOOTER)
     return "\n".join(out)
 
@@ -70,12 +78,10 @@ def latex(sc: Scores, model: str) -> str:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--model", default="llama3_8b")
     p.add_argument("--format", choices=["latex", "text"], default="latex")
     p.add_argument("--out", type=Path)
     args = p.parse_args()
-    sc = Scores()
-    write(args.out, latex(sc, args.model) if args.format == "latex" else text(sc, args.model))
+    write(args.out, latex() if args.format == "latex" else text())
 
 
 if __name__ == "__main__":

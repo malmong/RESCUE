@@ -1,99 +1,138 @@
 #!/usr/bin/env python
-"""Table 11 (tab:cache_select).
+"""Table 11 (tab:probe_length).
 
-Control: give the selector two existing caches instead of two lambdas.
+Probe length: how many tokens the selector decodes before it decides.
 
-Same one-token probe, same KL criterion; the candidates are SnapKV's cache and
-ForesightKV's rather than lambda 0 and 1. If choosing between two off-the-shelf
-policies scored as well as correcting one with a trained residual scorer, the
-scorer would not be what the selector needs.
+The probe is the selector's only cost that scales with a setting, so its length
+is the one knob with a direct latency consequence. It is swept on LaProx and
+SnapKV over all sixteen tasks, and the table reports the gain averaged over
+both, the worst single cell, and a two-sided sign test of each length against a
+single token over the paired cells.
 
-ForesightKV rather than LookaheadKV: LookaheadKV runs its own decoder path and
-never reaches the eviction machinery that builds candidate caches, so it cannot
-be a candidate here. It is also the more expensive of the two comparators,
-which makes this the harder control.
+The latency column is read from ``results/latency.csv`` when that file is
+present; it is measurement, not arithmetic over scores, so it is absent from a
+checkout that has not run ``scripts/run_latency.sh``.
 
-    python analysis/table_11.py --format text
+    python analysis/table_10.py --format text
 """
 from __future__ import annotations
 
 import argparse
+import csv
 import statistics as st
+from math import comb
 from pathlib import Path
 
-from data import (LATEX_FOOTER, Scores, TASK_LABEL, latex_header, write)
-from rescue.models import LONGBENCH_TASKS
+from data import (BASE_LABEL, LATEX_FOOTER, REPO_ROOT, Scores, latex_header,
+                    write)
 
-BASE = "snapkv"
+LENGTHS = [(1, "rescue"), (2, "probe2"), (4, "probe4"), (8, "probe8")]
+SWEPT = ("laprox", "snapkv")
+LATENCY = REPO_ROOT / "results" / "latency.csv"
+
+
+# A cell whose gain moves by less than this is a tie, not a win. LongBench
+# scores are reported to two decimals and several tasks move in fixed steps
+# (TREC in units of 0.5, PassageCount in 0.05), so without a dead zone the
+# sign test counts quantisation as evidence.
+TIE = 0.05
+
+
+def sign_test(pairs: list[tuple[float, float]]) -> tuple[float | None, int, int, int]:
+    """Two-sided sign test: how often does the longer probe beat one token?
+
+    Returns (p, wins, losses, ties).
+    """
+    wins = sum(1 for a, b in pairs if b > a + TIE)
+    losses = sum(1 for a, b in pairs if b < a - TIE)
+    ties = len(pairs) - wins - losses
+    n = wins + losses
+    if n == 0:
+        return None, wins, losses, ties
+    k = min(wins, losses)
+    tail = sum(comb(n, i) for i in range(k + 1)) / (2 ** n)
+    return min(1.0, 2 * tail), wins, losses, ties
+
+
+def deltas(sc: Scores, model: str, arm: str) -> list[tuple[str, str, float]]:
+    """Per-cell gain over the same base policy, across the swept bases."""
+    out = []
+    for b in SWEPT:
+        for t, base, v in sc.paired(model, "base", arm, b):
+            out.append((b, t, v - base))
+    return out
+
+
+def latency() -> dict[int, float]:
+    if not LATENCY.exists():
+        return {}
+    out = {}
+    with open(LATENCY, encoding="utf-8") as fh:
+        for r in csv.DictReader(line for line in fh if not line.startswith("#")):
+            if r.get("component") == "total" and r.get("probe_len"):
+                out[int(r["probe_len"])] = float(r["ms"])
+    return out
 
 
 def rows(sc: Scores, model: str):
-    for t in LONGBENCH_TASKS:
-        b = sc.get(model, "base", BASE, 128, t)
-        f = sc.get(model, "foresightkv", "", 128, t)
-        c = sc.get(model, "cache_select", BASE, 128, t)
-        r = sc.get(model, "rescue", BASE, 128, t)
-        if None in (b, f, c, r):
+    ref = {(b, t): d for b, t, d in deltas(sc, model, "rescue")}
+    lat = latency()
+    for n, arm in LENGTHS:
+        d = deltas(sc, model, arm)
+        if not d:
+            yield n, None, None, None, None, lat.get(n)
             continue
-        yield t, b, f, c, r
-
-
-def summarise(rs):
-    dc = [c - b for _t, b, _f, c, _r in rs]
-    dr = [r - b for _t, b, _f, _c, r in rs]
-    df = [f - b for _t, b, f, _c, _r in rs]
-    # Choosing the better of the two policies per TASK, knowing the answer
-    # afterwards -- the ceiling for any assignment of policies to tasks.
-    do = [max(b, f) - b for _t, b, f, _c, _r in rs]
-    return dc, dr, df, do
+        vals = [x for *_, x in d]
+        pairs = [(ref[(b, t)], x) for b, t, x in d if (b, t) in ref]
+        vs = None if n == 1 else st.mean([y - x for x, y in pairs])
+        wl = None if n == 1 else sign_test(pairs)
+        p = None if wl is None else wl[0]
+        yield n, st.mean(vals), min(vals), vs, p, lat.get(n), wl
 
 
 def text(sc: Scores, model: str) -> str:
-    rs = list(rows(sc, model))
-    if not rs:
-        return "cache-selection control absent from results/scores.csv"
-    lines = [f"{model}  --  selecting between two policies' caches, B=128",
-             f"  {'task':21s} {'SnapKV':>7s} {'Fore':>7s} {'CacheSel':>9s} {'RESCUE':>7s}"
-             f" {'dCS':>7s} {'dRES':>7s}"]
-    for t, b, f, c, r in rs:
-        lines.append(f"  {TASK_LABEL[t]:21s} {b:7.2f} {f:7.2f} {c:9.2f} {r:7.2f}"
-                     f" {c - b:+7.2f} {r - b:+7.2f}")
-    dc, dr, df, do = summarise(rs)
+    lines = [f"{model}  --  selector probe length",
+             f"  {'probe':>6s} {'avg gain':>9s} {'worst':>8s} {'vs p=1':>8s} "
+             f"{'W/L/T':>10s} {'sign':>7s} {'ms':>8s}"]
+    for n, avg, worst, vs, p, ms, wl in rows(sc, model):
+        if avg is None:
+            lines.append(f"  {n:6d}   (absent from results/scores.csv)")
+            continue
+        rec = "--" if wl is None else f"{wl[1]}/{wl[2]}/{wl[3]}"
+        lines.append(f"  {n:6d} {avg:+9.2f} {worst:+8.2f} "
+                     f"{'--' if vs is None else f'{vs:+.2f}':>8s} {rec:>10s} "
+                     f"{'--' if p is None else f'{p:.3f}':>7s} "
+                     f"{'--' if ms is None else f'{ms:.1f}':>8s}")
     lines.append("")
-    lines.append(f"  mean delta vs SnapKV   CacheSel {st.mean(dc):+.2f}   RESCUE {st.mean(dr):+.2f}"
-                 f"   ForesightKV alone {st.mean(df):+.2f}")
-    lines.append(f"  win/loss               CacheSel {sum(1 for x in dc if x > 0)}/{sum(1 for x in dc if x < 0)}"
-                 f"        RESCUE {sum(1 for x in dr if x > 0)}/{sum(1 for x in dr if x < 0)}")
-    lines.append(f"  per-task hindsight oracle over the two policies {st.mean(do):+.2f}"
-                 f"  -- CacheSel chooses per document and reaches {st.mean(dc):+.2f}")
+    lines.append("  per base policy:")
+    lines.append(f"    {'base':8s}" + "".join(f"{f'p={n}':>9s}" for n, _ in LENGTHS))
+    for b in SWEPT:
+        row = [f"    {BASE_LABEL[b]:8s}"]
+        for _n, arm in LENGTHS:
+            pair = sc.paired(model, "base", arm, b)
+            row.append(f"{st.mean([v - u for _, u, v in pair]):+9.2f}" if pair else f"{'--':>9s}")
+        lines.append("".join(row))
     return "\n".join(lines)
 
 
 def latex(sc: Scores, model: str) -> str:
-    rs = list(rows(sc, model))
     out = [latex_header(
-        "Selecting between two policies' caches, against correcting one of them. All "
-        "columns are LongBench scores at a 128-token budget. ``CacheSel'' applies the "
-        "RESCUE selector to the SnapKV and ForesightKV caches; ``RESCUE'' corrects the "
-        "SnapKV cache with the residual scorer under the same selector.",
-        "tab:cache_select", "lrrrrr"),
-        r"\textbf{Task} & \textbf{SnapKV} & \textbf{ForesightKV} & \textbf{CacheSel} "
-        r"& \textbf{RESCUE} & \textbf{$\Delta$ CacheSel} \\", r"\midrule"]
-    for t, b, f, c, r in rs:
-        best = max(c, r)
-        cs = f"\\textbf{{{c:.2f}}}" if c == best else f"{c:.2f}"
-        rr = f"\\textbf{{{r:.2f}}}" if r == best else f"{r:.2f}"
-        out.append(f"{TASK_LABEL[t]} & {b:.2f} & {f:.2f} & {cs} & {rr} & ${c - b:+.2f}$ \\\\")
-    if rs:
-        dc, dr, df, _ = summarise(rs)
-        out.append(r"\midrule")
-        out.append(r"\textbf{Average $\Delta$ vs.\ SnapKV} & -- & "
-                   f"${st.mean(df):+.2f}$ & ${st.mean(dc):+.2f}$ & "
-                   f"$\\mathbf{{{st.mean(dr):+.2f}}}$ & \\\\")
-        out.append(r"\textbf{Win / loss vs.\ SnapKV} & -- & "
-                   f"{sum(1 for x in df if x > 0)} / {sum(1 for x in df if x < 0)} & "
-                   f"{sum(1 for x in dc if x > 0)} / {sum(1 for x in dc if x < 0)} & "
-                   f"\\textbf{{{sum(1 for x in dr if x > 0)} / {sum(1 for x in dr if x < 0)}}} & \\\\")
+        "Selector probe length, on LaProx and SnapKV over all sixteen tasks. The gain "
+        "is against the same base policy at a 128-token budget; the sign test is "
+        "two-sided over the paired cells. Longer probes help, and cost proportionally.",
+        "tab:probe_length", "cccccc"),
+        r"\textbf{Probe} & \textbf{Avg.\ gain} & \textbf{Worst drop} & "
+        r"\textbf{vs.\ $p{=}1$} & \textbf{Sign test} & \textbf{Added logic} \\",
+        r"\midrule"]
+    for n, avg, worst, vs, p, ms, _wl in rows(sc, model):
+        if avg is None:
+            out.append(f"{n} & \\LBmissing & \\LBmissing & \\LBmissing & \\LBmissing & \\LBmissing \\\\")
+            continue
+        cell = (f"\\textbf{{{ms:.1f}\\,ms}}" if (ms is not None and n == 1)
+                else f"{ms:.1f}\\,ms" if ms is not None else r"\LBmissing")
+        out.append(f"{n} & ${avg:+.2f}$ & ${worst:+.2f}$ & "
+                   f"{'--' if vs is None else f'${vs:+.2f}$'} & "
+                   f"{'--' if p is None else f'${p:.3f}$'} & {cell} \\\\")
     out.append(LATEX_FOOTER)
     return "\n".join(out)
 

@@ -1,84 +1,76 @@
 #!/usr/bin/env python
-"""Table 14 (tab:seed_variance). How much of a reported margin is the seed?
+"""Table 14 (tab:kslot).
 
-The scorer is small and trained on a few hundred documents, so retraining it
-under a different seed moves the downstream score. The margin between two
-learning targets has to be read against that spread, which is why this table
-sits beside the target comparison rather than in an appendix of its own.
+Bounding the blast radius: restrict the correction to k contested slots.
 
-Three seeds, two base policies, the three tasks the paper reports.
+The obvious way to make a correction safe is to bound how much of the cache it
+may change -- reserve the base policy's top-(B-k) outright and let the corrected
+score compete only for the remaining k. A bad correction then costs at most k
+entries.
 
-    python analysis/table_14.py --format text
+It does not pay, and the reason is worth recording: bounding the damage at k
+entries also bounds the benefit at k entries, whereas the selector rejects the
+correction entirely on the documents where it would hurt and leaves it
+unbounded on the rest. The restriction duplicates the selector's job and does
+it worse.
+
+    python analysis/table_12.py --format text
 """
 from __future__ import annotations
 
 import argparse
-import statistics as st
 from pathlib import Path
 
 from data import BASE_LABEL, LATEX_FOOTER, Scores, TASK_LABEL, latex_header, write
 
-BASES = ("h2o", "rkv")
-TASKS = ("qasper", "trec", "lcc")
-SEEDS = [(0, "rescue"), (1, "seed1"), (2, "seed2")]
+KS = (16, 32, 64)
+CELLS = [("snapkv", "qasper"), ("snapkv", "trec"), ("rkv", "qasper"), ("rkv", "trec")]
 
 
 def rows(sc: Scores, model: str):
-    for b in BASES:
-        gains = {}
-        for seed, arm in SEEDS:
-            per_task = []
-            for t in TASKS:
-                base = sc.get(model, "base", b, 128, t)
-                v = sc.get(model, arm, b, 128, t)
-                per_task.append(None if (base is None or v is None) else v - base)
-            gains[seed] = per_task
-        avgs = [st.mean([g for g in gains[s] if g is not None])
-                for s, _a in SEEDS if any(g is not None for g in gains[s])]
-        # Population s.d.: the three seeds are the whole set being described,
-        # not a sample drawn from a larger pool of seeds.
-        sd = st.pstdev(avgs) if len(avgs) > 1 else None
-        rng = (max(avgs) - min(avgs)) if len(avgs) > 1 else None
-        yield b, gains, sd, rng
+    for b, t in CELLS:
+        base = sc.get(model, "base", b, 128, t)
+        if base is None:
+            continue
+        gains = [(k, v - base if (v := sc.get(model, f"kslot{k}", b, 128, t)) is not None
+                  else None) for k in KS]
+        full = sc.get(model, "rescue", b, 128, t)
+        yield b, t, base, gains, (full - base if full is not None else None)
 
 
 def text(sc: Scores, model: str) -> str:
-    lines = [f"{model}  --  gain by training seed, over the same base policy",
-             f"  {'base':8s} {'task':10s}" + "".join(f"{f'seed {s}':>9s}" for s, _ in SEEDS)
-             + f" {'s.d.':>7s} {'range':>7s}"]
-    for b, gains, sd, rng in rows(sc, model):
-        for i, t in enumerate(TASKS):
-            cells = "".join(
-                f"{gains[s][i]:+9.2f}" if gains[s][i] is not None else f"{'--':>9s}"
-                for s, _a in SEEDS)
-            tail = (f" {sd:7.2f} {rng:7.2f}" if i == 0 and sd is not None
-                    else " " * 16)
-            lines.append(f"  {BASE_LABEL[b] if i == 0 else '':8s} {TASK_LABEL[t]:10s}{cells}{tail}")
+    lines = [f"{model}  --  correction restricted to k contested slots, B=128",
+             f"  {'base':8s} {'task':10s} {'base':>7s}" +
+             "".join(f"{f'k={k}':>9s}" for k in KS) + f" {'unrestricted':>13s}"]
+    for b, t, base, gains, full in rows(sc, model):
+        cells = "".join(f"{g:+9.2f}" if g is not None else f"{'--':>9s}" for _k, g in gains)
+        f = f"{full:+13.2f}" if full is not None else f"{'--':>13s}"
+        lines.append(f"  {BASE_LABEL[b]:8s} {TASK_LABEL[t]:10s} {base:7.2f}{cells}{f}")
     return "\n".join(lines)
 
 
 def latex(sc: Scores, model: str) -> str:
     out = [latex_header(
-        "Gain over the same base policy with the scorer retrained under three seeds, "
-        "everything else fixed. The s.d.\\ and range are over the three-task averages, "
-        "and they bound how finely a difference between two scorers can be read.",
-        "tab:seed_variance", "llcccccc"),
-        r"& & \multicolumn{3}{c}{\textbf{Gain by seed}} & & "
-        r"\multicolumn{2}{c}{\textbf{3-task average}} \\",
-        r"\textbf{Base} & \textbf{Task} & 0 & 1 & 2 & & \textbf{s.d.} & \textbf{range} \\",
+        "Restricting the correction to $k$ contested slots, against the unrestricted "
+        "correction, at a $128$-token budget. Entries are gains over the corresponding "
+        "base policy; the selector is left on throughout.",
+        "tab:kslot", "llc" + "c" * len(KS) + "c"),
+        r"\textbf{Base} & \textbf{Task} & \textbf{Base score} & " +
+        " & ".join(f"$k{{=}}{k}$" for k in KS) + r" & \textbf{Unrestricted} \\",
         r"\midrule"]
-    for b, gains, sd, rng in rows(sc, model):
-        for i, t in enumerate(TASKS):
-            cells = " & ".join(
-                f"${gains[s][i]:+.2f}$" if gains[s][i] is not None else r"\LBmissing"
-                for s, _a in SEEDS)
-            if i == 0:
-                tail = (f" & & \\multirow{{{len(TASKS)}}}{{*}}{{${sd:.2f}$}} & "
-                        f"\\multirow{{{len(TASKS)}}}{{*}}{{${rng:.2f}$}}"
-                        if sd is not None else " & & &")
-                out.append(f"{BASE_LABEL[b]} & {TASK_LABEL[t]} & {cells}{tail} \\\\")
+    for b, t, base, gains, full in rows(sc, model):
+        vals = [g for _k, g in gains if g is not None] + ([full] if full is not None else [])
+        best = max(vals) if vals else None
+        cells = []
+        for _k, g in gains:
+            if g is None:
+                cells.append(r"\LBmissing")
             else:
-                out.append(f"     & {TASK_LABEL[t]} & {cells} & & & \\\\")
+                cells.append(f"$\\mathbf{{{g:+.2f}}}$" if g == best else f"${g:+.2f}$")
+        f = (r"\LBmissing" if full is None else
+             f"$\\mathbf{{{full:+.2f}}}$" if full == best else f"${full:+.2f}$")
+        out.append(f"{BASE_LABEL[b]} & {TASK_LABEL[t]} & {base:.2f} & "
+                   + " & ".join(cells) + f" & {f} \\\\")
     out.append(LATEX_FOOTER)
     return "\n".join(out)
 

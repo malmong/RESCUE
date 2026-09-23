@@ -1,76 +1,76 @@
 #!/usr/bin/env python
-"""Table 8 (tab:runtime_overhead). What the selector costs, and where.
+"""Table 8 (tab:headroom).
 
-RESCUE is about twice the most expensive predicted-future method it is compared
-against, not less than it: this is accuracy bought with latency, not latency
-saved. Almost none of the cost is the scorer -- it is building and replaying one
-pruned cache per candidate lambda, which is why the number of candidates, not
-the size of the model, is what the cost scales with.
+How much of the reachable headroom does the correction actually take?
 
-Read from results/latency.csv, which scripts/run_latency.sh regenerates.
+A raw gain says nothing about whether a task was hard. The ceiling here is the
+same correction driven by *real* future attention, read off an un-evicted
+reference generation: an oracle over the signal, at the same budget and with
+the same combination rule, so the gap to it is what a perfect predictor of
+future importance would be worth.
 
-    python analysis/table_8.py --format text
+Recovery is `(RESCUE - base) / (oracle - base)`, undefined where the correction
+loses ground.
+
+    python analysis/table_7.py --format text
 """
 from __future__ import annotations
 
 import argparse
-import csv
+import statistics as st
 from pathlib import Path
 
-from data import LATEX_FOOTER, REPO_ROOT, latex_header, write
+from data import (BASES, LATEX_FOOTER, Scores, TASK_LABEL, latex_header, write)
+from rescue.models import LONGBENCH_TASKS
 
-LATENCY = REPO_ROOT / "results" / "latency.csv"
-ROWS = [
-    ("snapkv", "", "total", "SnapKV", 0),
-    ("lookaheadkv", "", "total", "LookaheadKV$^{\\dagger}$", 0),
-    ("foresightkv", "", "total", "ForesightKV", 0),
-    ("rescue_corr", "", "total", "RESCUE correction only", 0),
-    ("rescue", "1", "total", "RESCUE + 1-token selector", 0),
-    ("rescue", "1", "probe", "dense probe", 1),
-    ("rescue", "1", "candidates", "two candidate caches", 1),
-]
+ORACLE_BASE = "snapkv"     # the oracle run is scored on one base policy
 
 
-def load() -> dict[tuple[str, str, str], float]:
-    if not LATENCY.exists():
-        raise SystemExit(f"{LATENCY} not found; run scripts/run_latency.sh")
-    out = {}
-    with open(LATENCY, encoding="utf-8") as fh:
-        for r in csv.DictReader(line for line in fh if not line.startswith("#")):
-            out[(r["method"], r["probe_len"], r["component"])] = float(r["ms"])
+def rows(sc: Scores, model: str):
+    out = []
+    for t in LONGBENCH_TASKS:
+        orc = sc.get(model, "oracle_future", ORACLE_BASE, 128, t)
+        if orc is None:
+            continue
+        base = [sc.get(model, "base", b, 128, t) for b in BASES]
+        resc = [sc.get(model, "rescue", b, 128, t) for b in BASES]
+        if any(x is None for x in base + resc):
+            continue
+        b, r = st.mean(base), st.mean(resc)
+        out.append((t, orc, b, orc - b, r - b))
+    out.sort(key=lambda x: -x[3])
     return out
 
 
-def text() -> str:
-    d = load()
-    lines = ["Added logic per document, median, Llama-3.1-8B-Instruct on Qasper",
-             f"  {'method':34s} {'ms':>8s}"]
-    for method, probe, comp, label, indent in ROWS:
-        v = d.get((method, probe, comp))
-        if v is None:
-            continue
-        lines.append(f"  {'  ' * indent + label:34s} {v:8.1f}")
+def text(sc: Scores, model: str) -> str:
+    rs = rows(sc, model)
+    if not rs:
+        return "oracle run absent from results/scores.csv"
+    lines = [f"{model}  --  headroom against an oracle future signal, B=128",
+             f"  {'task':21s} {'oracle':>7s} {'base':>7s} {'headroom':>9s} {'gain':>7s} {'recovery':>9s}"]
+    for t, orc, b, head, gain in rs:
+        rec = f"{100 * gain / head:8.1f}%" if head > 1e-9 and gain > 0 else "       --"
+        lines.append(f"  {TASK_LABEL[t]:21s} {orc:7.2f} {b:7.2f} {head:9.2f} {gain:+7.2f} {rec}")
+    heads = [h for *_, h, _ in rs]
+    gains = [g for *_, g in rs]
+    lines.append(f"\n  mean headroom {st.mean(heads):.2f}, mean gain {st.mean(gains):+.2f}"
+                 f"  -- overall recovery {100 * st.mean(gains) / st.mean(heads):.1f}%")
     return "\n".join(lines)
 
 
-def latex() -> str:
-    d = load()
+def latex(sc: Scores, model: str) -> str:
     out = [latex_header(
-        "Eviction- and selection-related latency per document, median over $200$ Qasper "
-        "documents at $\\sim$5K tokens on Llama-3.1-8B-Instruct. Prefill and generation "
-        "are excluded; see the latency protocol for what the interval covers. "
-        "$^{\\dagger}$LookaheadKV runs its own decoder path, so its figure is measured "
-        "differently and is not directly comparable.",
-        "tab:runtime_overhead", "lr"),
-        r"\textbf{Method} & \textbf{Latency} \\", r"\midrule"]
-    for method, probe, comp, label, indent in ROWS:
-        v = d.get((method, probe, comp))
-        if v is None:
-            continue
-        if indent:
-            out.append(f"\\quad \\emph{{{label}}} & \\emph{{{v:.1f} ms}} \\\\")
-        else:
-            out.append(f"{label} & {v:.1f} ms \\\\")
+        "Headroom against an oracle future signal at a 128-token budget. The oracle "
+        "runs the same correction on real future attention taken from an un-evicted "
+        "reference generation; base and RESCUE are averaged over the five base policies. "
+        "Recovery is the share of the gap that the learned correction takes.",
+        "tab:headroom", "lrrrr"),
+        r"\textbf{Task} & \textbf{Oracle} & \textbf{Base (mean)} & \textbf{Headroom} "
+        r"& \textbf{RESCUE $\Delta$ (recovery)} \\", r"\midrule"]
+    for t, orc, b, head, gain in rows(sc, model):
+        rec = f"({100 * gain / head:.1f}\\%)" if head > 1e-9 and gain > 0 else "(--)"
+        out.append(f"{TASK_LABEL[t]} & {orc:.2f} & {b:.2f} & {head:.2f} & "
+                   f"${gain:+.2f}$ \; {rec} \\\\")
     out.append(LATEX_FOOTER)
     return "\n".join(out)
 
@@ -78,10 +78,12 @@ def latex() -> str:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--model", default="llama3_8b")
     p.add_argument("--format", choices=["latex", "text"], default="latex")
     p.add_argument("--out", type=Path)
     args = p.parse_args()
-    write(args.out, latex() if args.format == "latex" else text())
+    sc = Scores()
+    write(args.out, latex(sc, args.model) if args.format == "latex" else text(sc, args.model))
 
 
 if __name__ == "__main__":

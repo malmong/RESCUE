@@ -18,3 +18,10 @@ rescue,1,candidates,253.8,200
 rescue,2,total,330.4,200
 rescue,4,total,442.9,200
 rescue,8,total,682.6,200
+# The same measurement at larger budgets, for the accuracy-against-cost table.
+# RESCUE's overhead is flat in the budget: the cost is building and replaying the
+# candidate caches, which scales with the prompt rather than with how much is kept.
+snapkv,,total_b256,5.4,200
+snapkv,,total_b1024,5.3,200
+rescue,1,total_b256,275.1,200
+rescue,1,total_b1024,274.2,200
