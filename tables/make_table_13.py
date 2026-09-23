@@ -75,9 +75,10 @@ def rows(model: str):
                sum(gains[key]) / total if total else 0.0)
     right = sum(len(quad[k]) for k, _l, v in LABELS if v == "right")
     net = sum(sum(g) for g in gains.values()) / total if total else 0.0
-    yield ("Net", f"{100 * right / total:.1f}% right" if total else "--",
+    # "%" is a comment character in LaTeX; the text renderer strips the escape.
+    yield ("Net", f"{100 * right / total:.1f}\\% right" if total else "--",
            total, 100.0, float("nan"), net)
-    yield ("__meta__", "", unmatched, same, float("nan"), float("nan"))
+    yield ("__meta__", "", unmatched, float(same), float("nan"), float("nan"))
 
 
 def text(model: str) -> str:
@@ -85,12 +86,14 @@ def text(model: str) -> str:
              f"  {'decision':34s} {'n':>6s} {'share':>7s} {'mean |d|':>9s} {'contribution':>13s}"]
     for label, verdict, n, share, mag, contrib in rows(model):
         if label == "__meta__":
-            lines.append(f"\n  excluded: {n} documents whose selector score matched neither arm; "
-                         f"{verdict} where the two caches scored the same")
+            lines.append(f"\n  excluded: {n} documents whose selector score matched "
+                         f"neither arm, and {int(share)} where the two caches scored "
+                         f"the same")
             continue
         if label == "Net":
             lines.append(f"  {'-' * 70}")
-            lines.append(f"  {'Net':34s} {n:6d} {verdict:>7s} {'--':>9s} {contrib:+13.2f}")
+            lines.append(f"  {'Net':34s} {n:6d} {verdict.replace(chr(92) + '%', '%'):>12s} "
+                         f"{'--':>9s} {contrib:+13.2f}")
             continue
         lines.append(f"  {label + ' (' + verdict + ')':34s} {n:6d} {share:6.1f}% "
                      f"{mag:9.2f} {contrib:+13.2f}")
