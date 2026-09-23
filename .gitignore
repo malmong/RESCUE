@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.DS_Store
+
+# Model weights and benchmark data are fetched by scripts/download_assets.sh.
+assets/
+
+# Evaluation output. results/scores.csv is the committed distillation of it.
+runs/
+
+# Rendered tables and figures; the scripts under tables/ and figures/ rebuild
+# them from results/ in seconds.
+tables/out/
+figures/out/

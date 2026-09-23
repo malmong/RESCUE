@@ -1,0 +1,57 @@
+# Llama-3.1-8B-Instruct. Every field here is a value the paper reports;
+# nothing is tuned per task.
+name: llama3_8b
+hf_id: meta-llama/Llama-3.1-8B-Instruct
+
+# The model's own trained position range. Documents longer than this are
+# truncated head+tail by the generator, never extrapolated: Mistral was
+# briefly run past its limit and its eviction scores degraded on the one
+# task where that happened (NarrativeQA, 58% of documents), so the limit
+# is a per-model field rather than one shared constant.
+max_seq_len: 131072
+max_out_len: 512
+attn_implementation: eager
+
+budget:
+  total_tokens: 128        # retained prompt KV positions per layer
+  sink_tokens: 4
+  recent_tokens: 64
+
+snapkv:
+  obs_window: 32
+  kernel_size: 7
+  pooling: avgpool
+
+rkv:
+  window_size: 8
+  mix_lambda: 0.07
+  kernel_size: 7
+  retain_ratio: 0.1
+  retain_direction: last
+
+# Base policies RESCUE is ported onto, and the budget allocation each one
+# uses natively. LaProx pools its budget across layers; the rest are per-head.
+bases:
+  snapkv: {allocation: per_head}
+  laprox: {allocation: global_layer}
+  h2o:    {allocation: per_head}
+  lava:   {allocation: per_head}
+  rkv:    {allocation: per_head}
+
+rescue:
+  objective: RESCUE
+  combine_mode: scale_additive   # lambda=0 is bit-identical to the base
+  no_impact: true
+  lambda_select: fidelity
+  fidelity_lambdas: [0, 1]
+  fidelity_probe_len: 1
+  # All candidate KLs below this are treated as no evidence, and the base
+  # cache is kept rather than letting the order of two rounding errors
+  # decide. See README, "Selector abstention".
+  kl_floor: 1.0e-6
+
+future_aware:
+  foresight_recent_window: 64
+  lookahead_size: 32
+  lookahead_lora_rank: 8
+  lookahead_reduction: mean

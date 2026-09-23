@@ -1,0 +1,20 @@
+# Core. transformers is pinned because the eviction hooks read attention
+# weights back from the forward pass, which requires eager attention and the
+# DynamicCache API as of this range.
+torch>=2.1
+transformers>=4.44,<5
+accelerate>=0.30
+safetensors>=0.4
+pyyaml>=6.0
+numpy>=1.24
+
+# Tables and figures
+matplotlib>=3.7
+
+# Evaluation harness. LongBench scoring uses the official metrics, which
+# OpenCompass implements; see README for the checkout it expects.
+opencompass>=0.3
+datasets>=2.18
+jieba>=0.42         # OpenCompass LongBench metric dependency
+rouge-score>=0.1
+fuzzywuzzy>=0.18
