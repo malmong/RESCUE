@@ -34,16 +34,22 @@ plt.rcParams.update({
     "axes.spines.top": False,
     "axes.spines.right": False,
     "figure.dpi": 150,
+    "savefig.dpi": 300,   # what the paper's own figures were written at
     "savefig.bbox": "tight",
 })
 
 
 def save(fig, name: str, out: Path | None = None) -> None:
-    """Write both the PNG the paper includes and a PDF for print."""
+    """Write both the PNG the paper includes and a PDF for print.
+
+    300 dpi, which is what the figures in the paper were written at, so a
+    regenerated file is comparable to the one in the PDF rather than merely
+    similar.
+    """
     dest = out or OUT_DIR / name
     dest.parent.mkdir(parents=True, exist_ok=True)
     for ext in ("png", "pdf"):
         p = dest.with_suffix(f".{ext}")
-        fig.savefig(p)
+        fig.savefig(p, dpi=300, bbox_inches="tight")
         print(f"-> {p}")
     plt.close(fig)
