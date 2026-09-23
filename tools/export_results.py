@@ -44,6 +44,9 @@ BASES = ("snapkv", "laprox", "h2o", "lava", "rkv")
 #   lookaheadkv / foresightkv   future-aware comparators
 #   cache_select      the selector choosing between SnapKV's and ForesightKV's caches
 #   probe2/4/8        selector probe length other than one token
+#   seed1/seed2       the scorer retrained under a different seed
+#   kslot16/32/64     the correction restricted to k contested slots
+#   lambda4           a finer candidate grid, lambda in {0, 0.5, 1, 2}
 ARMS: dict[str, tuple[str, str, str | None, int]] = {}
 
 # Some suffixes were reused across arms that differ only in a flag the suffix
@@ -94,6 +97,20 @@ _add("p128_foresight64", "llama3_8b", "foresightkv", None, 128)
 # from results/per_document.csv.
 _add("orc50", "llama3_8b", "oracle_future", "snapkv", 128)
 _add("cachesel", "llama3_8b", "cache_select", "snapkv", 128)
+
+# Seed variance: the same recipe retrained under two further seeds, on the
+# three tasks the paper reports. Seed 0 is the shipped scorer.
+for _b in ("h2o", "rkv"):
+    for _s in (1, 2):
+        _add(f"seed{_s}_{_b}", "llama3_8b", f"seed{_s}", _b, 128,
+             require="fidelity0_1p1")
+
+# Restricting the correction to k contested slots, and a finer lambda grid.
+for _b in ("snapkv", "rkv"):
+    for _k in (16, 32, 64):
+        _add(f"ks{_k}_{_b}", "llama3_8b", f"kslot{_k}", _b, 128, require="kslot")
+    _add(f"lam4_{_b}", "llama3_8b", "lambda4", _b, 128,
+         require="fidelity0_0.5_1_2p1")
 
 # ---- Mistral-7B-Instruct-v0.3 ---------------------------------------------
 # m32_* are the runs at the model's own 32768-token position limit. The earlier

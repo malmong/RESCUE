@@ -1,0 +1,20 @@
+# Runtime breakdown on Llama-3.1-8B-Instruct, Qasper, 200 documents, ~5K-token
+# prompts, exclusive GPU. Medians per document. "added_logic" counts eviction-
+# and selection-related work only, excluding prefill and generation.
+# Rebuild with: bash scripts/run_latency.sh && python tools/export_latency.py
+method,probe_len,component,ms,n
+snapkv,,added_logic,5.6,200
+snapkv,,total,5.6,200
+lookaheadkv,,added_logic,11.2,200
+lookaheadkv,,total,11.2,200
+foresightkv,,added_logic,134.7,200
+foresightkv,,total,134.7,200
+rescue_corr,,added_logic,145.6,200
+rescue_corr,,total,145.6,200
+rescue,1,added_logic,277.2,200
+rescue,1,total,277.2,200
+rescue,1,probe,20.9,200
+rescue,1,candidates,253.8,200
+rescue,2,total,330.4,200
+rescue,4,total,442.9,200
+rescue,8,total,682.6,200

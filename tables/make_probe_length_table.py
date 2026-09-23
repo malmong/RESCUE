@@ -55,7 +55,7 @@ def latency() -> dict[int, float]:
         return {}
     out = {}
     with open(LATENCY, encoding="utf-8") as fh:
-        for r in csv.DictReader(fh):
+        for r in csv.DictReader(line for line in fh if not line.startswith("#")):
             if r.get("component") == "total" and r.get("probe_len"):
                 out[int(r["probe_len"])] = float(r["ms"])
     return out

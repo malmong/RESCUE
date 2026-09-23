@@ -1,0 +1,11 @@
+# Complementarity at a matched budget: how much of the oracle set each selection
+# rule retains when both are allowed the same number of entries. Without the
+# match, a union looks better simply by being larger.
+# Llama-3.1-8B-Instruct, B=128; alpha mixes the two signals' normalised scores.
+selection,size,oracle_coverage_pct,bold
+Observed only ($\alpha{=}0$),B,30.1,0
+Predicted only ($\alpha{=}1$),B,47.6,0
+Best mixture ($\alpha^{*}{=}0.875$),B,49.2,1
+Union (not budget-matched),1.64B,54.7,0
+"Observed only, matched to $|$union$|$",1.64B,39.3,0
+"Predicted only, matched to $|$union$|$",1.64B,60.2,1
