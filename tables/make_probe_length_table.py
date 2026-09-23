@@ -29,16 +29,27 @@ SWEPT = ("laprox", "snapkv")
 LATENCY = REPO_ROOT / "results" / "latency.csv"
 
 
-def sign_test(pairs: list[tuple[float, float]]) -> float | None:
-    """Two-sided sign test: how often does the longer probe beat one token?"""
-    wins = sum(1 for a, b in pairs if b > a)
-    losses = sum(1 for a, b in pairs if b < a)
+# A cell whose gain moves by less than this is a tie, not a win. LongBench
+# scores are reported to two decimals and several tasks move in fixed steps
+# (TREC in units of 0.5, PassageCount in 0.05), so without a dead zone the
+# sign test counts quantisation as evidence.
+TIE = 0.05
+
+
+def sign_test(pairs: list[tuple[float, float]]) -> tuple[float | None, int, int, int]:
+    """Two-sided sign test: how often does the longer probe beat one token?
+
+    Returns (p, wins, losses, ties).
+    """
+    wins = sum(1 for a, b in pairs if b > a + TIE)
+    losses = sum(1 for a, b in pairs if b < a - TIE)
+    ties = len(pairs) - wins - losses
     n = wins + losses
     if n == 0:
-        return None
+        return None, wins, losses, ties
     k = min(wins, losses)
     tail = sum(comb(n, i) for i in range(k + 1)) / (2 ** n)
-    return min(1.0, 2 * tail)
+    return min(1.0, 2 * tail), wins, losses, ties
 
 
 def deltas(sc: Scores, model: str, arm: str) -> list[tuple[str, str, float]]:
@@ -72,19 +83,22 @@ def rows(sc: Scores, model: str):
         vals = [x for *_, x in d]
         pairs = [(ref[(b, t)], x) for b, t, x in d if (b, t) in ref]
         vs = None if n == 1 else st.mean([y - x for x, y in pairs])
-        p = None if n == 1 else sign_test(pairs)
-        yield n, st.mean(vals), min(vals), vs, p, lat.get(n)
+        wl = None if n == 1 else sign_test(pairs)
+        p = None if wl is None else wl[0]
+        yield n, st.mean(vals), min(vals), vs, p, lat.get(n), wl
 
 
 def text(sc: Scores, model: str) -> str:
     lines = [f"{model}  --  selector probe length",
-             f"  {'probe':>6s} {'avg gain':>9s} {'worst':>8s} {'vs p=1':>8s} {'sign':>7s} {'ms':>8s}"]
-    for n, avg, worst, vs, p, ms in rows(sc, model):
+             f"  {'probe':>6s} {'avg gain':>9s} {'worst':>8s} {'vs p=1':>8s} "
+             f"{'W/L/T':>10s} {'sign':>7s} {'ms':>8s}"]
+    for n, avg, worst, vs, p, ms, wl in rows(sc, model):
         if avg is None:
             lines.append(f"  {n:6d}   (absent from results/scores.csv)")
             continue
+        rec = "--" if wl is None else f"{wl[1]}/{wl[2]}/{wl[3]}"
         lines.append(f"  {n:6d} {avg:+9.2f} {worst:+8.2f} "
-                     f"{'--' if vs is None else f'{vs:+.2f}':>8s} "
+                     f"{'--' if vs is None else f'{vs:+.2f}':>8s} {rec:>10s} "
                      f"{'--' if p is None else f'{p:.3f}':>7s} "
                      f"{'--' if ms is None else f'{ms:.1f}':>8s}")
     lines.append("")
@@ -108,7 +122,7 @@ def latex(sc: Scores, model: str) -> str:
         r"\textbf{Probe} & \textbf{Avg.\ gain} & \textbf{Worst drop} & "
         r"\textbf{vs.\ $p{=}1$} & \textbf{Sign test} & \textbf{Added logic} \\",
         r"\midrule"]
-    for n, avg, worst, vs, p, ms in rows(sc, model):
+    for n, avg, worst, vs, p, ms, _wl in rows(sc, model):
         if avg is None:
             out.append(f"{n} & \\LBmissing & \\LBmissing & \\LBmissing & \\LBmissing & \\LBmissing \\\\")
             continue
