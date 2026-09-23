@@ -19,10 +19,11 @@ from pathlib import Path
 
 import torch
 
-sys.path.insert(0, "/tmp/claude-1001/-home-byungjun-kv-cache/3b6b1de3-4fe2-4802-ba8a-70577e2afe93/scratchpad")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from coverage_lib import rank_pct, BUDGETS, SINK_TOKENS, RECENT_TOKENS  # noqa: E402
 
-SCRATCH = Path("/tmp/claude-1001/-home-byungjun-kv-cache/3b6b1de3-4fe2-4802-ba8a-70577e2afe93/scratchpad")
+SCRATCH = Path(os.environ.get(
+    "RESCUE_SCRATCH", Path(__file__).resolve().parents[2] / "runs" / "coverage"))
 
 OBSERVED_KEYS = ["h2o", "snapkv", "laprox", "lava", "rkv"]
 FUTURE_KEYS = ["foresightkv", "lookaheadkv"]

@@ -37,31 +37,38 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from src.models.registry import opencompass_root  # noqa: E402
 
-sys.path.insert(0, str(opencompass_root()))
+# The official LongBench metrics live in OpenCompass. They are imported when
+# the work starts rather than at module scope, so --help and an import of this
+# module work on a checkout that has not set OPENCOMPASS_ROOT yet.
+TASKS = ("narrativeqa", "qasper", "multifieldqa_en", "hotpotqa", "2wikimqa",
+         "musique", "gov_report", "qmsum", "multi_news", "trec", "triviaqa",
+         "samsum", "passage_count", "passage_retrieval_en", "lcc", "repobench")
 
-try:
-    from opencompass.datasets.longbench.evaluators import (
-        LongBenchClassificationEvaluator, LongBenchCodeSimEvaluator,
-        LongBenchCountEvaluator, LongBenchF1Evaluator,
-        LongBenchRetrievalEvaluator, LongBenchRougeEvaluator)
-except ImportError as exc:  # pragma: no cover
-    raise SystemExit(
-        f"cannot import the LongBench evaluators from {opencompass_root()}: {exc}\n"
-        "Set OPENCOMPASS_ROOT to your OpenCompass checkout."
-    )
 
-EVAL = {
-    "qasper": LongBenchF1Evaluator, "multifieldqa_en": LongBenchF1Evaluator,
-    "narrativeqa": LongBenchF1Evaluator, "hotpotqa": LongBenchF1Evaluator,
-    "2wikimqa": LongBenchF1Evaluator, "musique": LongBenchF1Evaluator,
-    "triviaqa": LongBenchF1Evaluator,
-    "gov_report": LongBenchRougeEvaluator, "qmsum": LongBenchRougeEvaluator,
-    "multi_news": LongBenchRougeEvaluator, "samsum": LongBenchRougeEvaluator,
-    "trec": LongBenchClassificationEvaluator,
-    "passage_count": LongBenchCountEvaluator,
-    "passage_retrieval_en": LongBenchRetrievalEvaluator,
-    "lcc": LongBenchCodeSimEvaluator, "repobench": LongBenchCodeSimEvaluator,
-}
+def evaluators() -> dict:
+    sys.path.insert(0, str(opencompass_root()))
+    try:
+        from opencompass.datasets.longbench.evaluators import (
+            LongBenchClassificationEvaluator, LongBenchCodeSimEvaluator,
+            LongBenchCountEvaluator, LongBenchF1Evaluator,
+            LongBenchRetrievalEvaluator, LongBenchRougeEvaluator)
+    except ImportError as exc:
+        raise SystemExit(
+            f"cannot import the LongBench evaluators from {opencompass_root()}: {exc}\n"
+            "Set OPENCOMPASS_ROOT to your OpenCompass checkout."
+        ) from exc
+    f1, rouge = LongBenchF1Evaluator, LongBenchRougeEvaluator
+    return {
+        "qasper": f1, "multifieldqa_en": f1, "narrativeqa": f1, "hotpotqa": f1,
+        "2wikimqa": f1, "musique": f1, "triviaqa": f1,
+        "gov_report": rouge, "qmsum": rouge, "multi_news": rouge, "samsum": rouge,
+        "trec": LongBenchClassificationEvaluator,
+        "passage_count": LongBenchCountEvaluator,
+        "passage_retrieval_en": LongBenchRetrievalEvaluator,
+        "lcc": LongBenchCodeSimEvaluator, "repobench": LongBenchCodeSimEvaluator,
+    }
+
+
 
 P = "llama31_8b_instruct"
 RFC = "-rfc-b128tok-lam1-noimpact-objRESCUE-"
@@ -123,7 +130,7 @@ def details(runs: Path, stem: str, task: str):
     return None
 
 
-def per_doc(task: str, det) -> dict[str, float]:
+def per_doc(task: str, det, EVAL) -> dict[str, float]:
     ev = EVAL[task]()
     return {k: float(ev.score([p], [r])["score"]) for k, (p, r) in det.items()}
 
@@ -150,9 +157,10 @@ def main() -> None:
     p.add_argument("--out", type=Path, default=REPO_ROOT / "results" / "per_document.csv")
     args = p.parse_args()
 
+    EVAL = evaluators()
     rows = []
     for base in BASE_STEM:
-        for task in EVAL:
+        for task in TASKS:
             sel = ALT.get((base, task), SEL_STEM[base])
             db = details(args.runs, BASE_STEM[base], task)
             dc = details(args.runs, corr_stem(base), task)
@@ -163,7 +171,8 @@ def main() -> None:
                           key=lambda x: int(x) if x.isdigit() else x)
             if not keys:
                 continue
-            sb, sc, sf = per_doc(task, db), per_doc(task, dc), per_doc(task, df)
+            sb, sc, sf = (per_doc(task, db, EVAL), per_doc(task, dc, EVAL),
+                          per_doc(task, df, EVAL))
             marg = kl_margins(args.runs, sel, task)
             for i, k in enumerate(keys):
                 rows.append(("llama3_8b", base, task, k,

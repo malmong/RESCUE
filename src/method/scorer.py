@@ -4,7 +4,7 @@ directly (MP/MH/QC etc, all still ~19 points short of the oracle ceiling on
 qasper), this predicts C_i = P(a Recent-only policy would WRONGLY evict this
 candidate that an Oracle policy would keep) from cheap, already-available
 recent-window Q/K/V statistics -- validated offline (see
-/tmp/.../scratchpad/rescue_experiment{0,1,3}.py) at grouped AUC 0.90-0.97 on
+the original single-file experiments) at grouped AUC 0.90-0.97 on
 held-out qasper documents, using ONLY non-tautological features (excludes the
 production S_recent score itself).
 
@@ -280,8 +280,10 @@ class RescueScorer:
                  if self.score_mode == "softmax" else torch.sigmoid(logit))
             return c.unsqueeze(0).expand(num_kv_heads, -1).to(k_cand.device)
         if os.environ.get("RESCUE_FEAT_DEBUG"):
-            # 추론이 만든 피처의 분포를 학습 때 적합된 scaler 와 직접 비교한다.
-            # 둘이 어긋나면 정규화가 무의미해지고, 그 어긋남은 모델마다 다를 수 있다.
+            # Compare the feature distribution produced at inference against
+            # the scaler fitted during training. If the two drift apart the
+            # normalisation stops meaning anything, and how far they drift is
+            # model-dependent.
             _m = X.float().mean(0); _s = X.float().std(0)
             _z = ((_m - self.scaler_mean.float()) / self.scaler_scale.float())
             print("[FEATDBG] L%02d " % layer_idx

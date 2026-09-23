@@ -33,10 +33,7 @@ from src.method import LearnedScorer
 from src.utils.foresightkv import ForesightPaperScorer
 from src.utils.foresightkv_official import ForesightKVJudgeScorer
 from src.utils.kvp import KVPPaperScorer
-from src.method.rfc_paper import RFCScorer
-from src.method.rfc_unified import HybridReuseImpactScorer, UnifiedRFCScorer
 from src.method.oracle_future import OracleFutureScorer
-from src.method.rfc_multi import MultiHeadRFCScorer
 from src.method.future_contrib.active_pattern import active_mask_from_attn, replay_activity
 from src.method.future_contrib.contribution import recent_contribution_from_attn
 from src.method.future_contrib.extract import SequenceCapture, install_capture_hooks
@@ -618,8 +615,9 @@ class DynamicEvictionState:
         self.learned_scorer = learned_scorer
         self.kvp_paper_scorer = None
         self.foresight_paper_scorer = None
-        self.rfc_scorer: RFCScorer | None = None
-        self.unified_rfc_scorer: UnifiedRFCScorer | None = None
+        self.rfc_scorer = None
+        # RescueScorer, or OracleFutureScorer for the headroom ceiling.
+        self.unified_rfc_scorer = None
         self.external_future_scorer = None
         self.external_future_kind = None
         self.layer_head_gain = None
@@ -844,10 +842,11 @@ class DynamicEvictionState:
                                               probe_attn=_pa,
                                               probe_weight=float(os.environ.get("RESCUE_PROBE_WEIGHT", "1")))
                 if os.environ.get("RESCUE_KEEP_DUMP") and keep is not None:
-                    # 같은 훅을 base 정책에도 달아, "RESCUE 가 base 보다 오라클을
-                    # 더 지키는가" 를 직접 비교할 수 있게 한다. 위치를 옳게
-                    # 고르는지만 봤을 때는 Qwen 이 Llama 보다 좋게 나왔는데,
-                    # 기준이 base 여야 그 수치가 의미를 갖는다.
+                    # The same hook runs on the base policy, so "does RESCUE
+                    # retain more of the oracle set than the base does" can be
+                    # read directly. Scoring the correction's choices on their
+                    # own is not enough: the base policy is the reference the
+                    # number has to be against.
                     import json as _json
                     _kd = keep.detach().cpu()
                     with open(os.environ["RESCUE_KEEP_DUMP"], "a") as _fh:
@@ -871,9 +870,11 @@ class DynamicEvictionState:
                     # ORACLE keeps at inference, not just on training features.
                     import json as _json
                     _kd = keep.detach().cpu()
-                    # 문서 지문: prune 호출 카운터는 두 arm 이 문서를 건너뛰는
-                    # 방식이 달라 어긋난다(측정: 1682 대 576 줄). 캐시 길이는
-                    # 같은 문서면 같으므로 이걸로 join 한다.
+                    # Document fingerprint. A prune-call counter does not line
+                    # up across arms, because they skip documents on different
+                    # conditions (measured: 1682 lines against 576). The cache
+                    # length is the same for the same document, so the two dumps
+                    # are joined on that instead.
                     _rec = {"doc": int(getattr(self, "_keepdump_doc", 0)),
                             "n": int(key.shape[2]),
                             "layer": int(layer_idx),
@@ -1431,11 +1432,7 @@ class DynamicEvictionState:
             # forward pass as .score() (see rfc_multi._prototype_forward), so
             # this branch's F_i is byte-identical to the plain .score() path
             # below when it fires; it only ADDS dists/gate alongside it.
-            needs_confidence = (
-                isinstance(self.unified_rfc_scorer, MultiHeadRFCScorer)
-                and getattr(self.unified_rfc_scorer, "variant", None) == "prototype"
-                and (self.cfg.future_fusion != "fixed" or self.cfg.future_confidence_log_path)
-            )
+            needs_confidence = False
             if needs_confidence:
                 conf_out = self.unified_rfc_scorer.score_with_confidence(q_ring, k_cand, layer_idx)
                 if conf_out is None:
@@ -2366,37 +2363,6 @@ class DenseEvictionGenerator:
                     head_dim = getattr(model.config, "head_dim", None) or (model.config.hidden_size // model.config.num_attention_heads)
                     self.unified_rfc_scorer = OracleFutureScorer(horizon=256, lambda_mix=float(cfg.rfc_lambda))
                     self._oracle_scaling = float(head_dim) ** -0.5
-                elif cfg.rfc_objective == "E":
-                    if not cfg.rfc_impact_checkpoint:
-                        raise ValueError("rfc_objective='E' requires rfc_impact_checkpoint (an objective-C checkpoint)")
-                    self.unified_rfc_scorer = HybridReuseImpactScorer(
-                        cfg.learned_checkpoint, cfg.rfc_impact_checkpoint, device=rfc_device, lambda_mix=float(cfg.rfc_lambda),
-                    )
-                elif cfg.rfc_objective in ("KVP_FUTURE", "FKV_FUTURE"):
-                    # User's reverse experiment: does the SAME laprox-exact
-                    # global-wise S_recent also help the OTHER learned
-                    # baselines' own future-prediction mechanisms, not just
-                    # rfc's own MLPs? Reuses each baseline's own trained
-                    # scorer as an alternative S_future source inside rfc's
-                    # S_recent + lambda*S_future machinery (allocation/
-                    # combine untouched). LookaheadKV is excluded: it has its
-                    # own custom decoder forward path (reference/official/
-                    # LookaheadKV) that never goes through this eviction
-                    # machinery at all, unlike KVP/ForesightKV which already
-                    # expose a plain score_layer(key, value, positions,
-                    # layer_id[, raw_attn]) -> per-(kv_head, position) score.
-                    if cfg.rfc_objective == "KVP_FUTURE":
-                        self.external_future_scorer = KVPPaperScorer(cfg.learned_checkpoint, device=rfc_device)
-                        self.external_future_kind = "KVP_FUTURE"
-                    else:
-                        self.external_future_scorer = ForesightKVJudgeScorer(cfg.learned_checkpoint, device=rfc_device)
-                        self.external_future_kind = "FKV_FUTURE"
-                elif cfg.rfc_objective == "QC":
-                    # Query-predicts-Contribution: see scripts/train_query_contribution.py
-                    # and src.method.rfc_query_contribution.
-                    from src.method.rfc_query_contribution import QueryContributionScorer
-
-                    self.unified_rfc_scorer = QueryContributionScorer(cfg.learned_checkpoint, device=rfc_device, lambda_mix=float(cfg.rfc_lambda))
                 elif cfg.rfc_objective == "RESCUE":
                     # Reframed objective: predict C_i = P(Recent-only wrongly
                     # evicts this candidate that Oracle would keep), not raw
@@ -2407,20 +2373,11 @@ class DenseEvictionGenerator:
                     from src.method.scorer import RescueScorer
 
                     self.unified_rfc_scorer = RescueScorer(cfg.learned_checkpoint, device=rfc_device, lambda_mix=float(cfg.rfc_lambda))
-                elif cfg.rfc_objective in ("MH", "MP"):
-                    # Priority 4 (MH, multi-horizon) / priority 5 (MP,
-                    # multi-prototype future query) -- see
-                    # src.method.future_contrib.train_multi / src.method.rfc_multi.
-                    scorer = MultiHeadRFCScorer(cfg.learned_checkpoint, device=rfc_device, lambda_mix=float(cfg.rfc_lambda))
-                    if cfg.rfc_objective == "MH" and cfg.rfc_eval_horizon_idx is not None:
-                        scorer.eval_horizon_idx = int(cfg.rfc_eval_horizon_idx)
-                    if cfg.rfc_objective == "MH" and cfg.rfc_eval_blend:
-                        scorer.eval_blend = True
-                    self.unified_rfc_scorer = scorer
-                elif cfg.rfc_objective and cfg.rfc_objective != "legacy":
-                    self.unified_rfc_scorer = UnifiedRFCScorer(cfg.learned_checkpoint, device=rfc_device, lambda_mix=float(cfg.rfc_lambda))
                 else:
-                    self.rfc_scorer = RFCScorer(cfg.learned_checkpoint, device=rfc_device, lambda_mix=float(cfg.rfc_lambda))
+                    raise ValueError(
+                        f"unsupported rfc_objective {cfg.rfc_objective!r}; this "
+                        "release implements 'RESCUE' and the 'oracle' ceiling"
+                    )
             else:
                 self.learned_scorer = LearnedScorer(cfg.learned_checkpoint, device="cpu")
         self.layer_head_gain = None
@@ -2808,7 +2765,7 @@ class DenseEvictionGenerator:
         # HF returns one [1, seq, hidden] tensor PER LAYER, so asking for hidden
         # states costs num_layers * seq * hidden * 2 bytes -- 16 GiB for a 64K
         # narrativeqa document on this model, and the prefix pass pays it a
-        # second time. Only two consumers exist: the legacy RFCScorer (via
+        # second time. Only two consumers exist: the residual scorer (via
         # _populate_z_cache_from_hidden_states / append_generated_position, both
         # of which no-op when self.rfc_scorer is None) and learned_scorer's
         # q_group. RESCUE runs on unified_rfc_scorer and reads neither, so it

@@ -88,10 +88,11 @@ SETS = {
     # About half of each NQ batch is skipped here for a too-short continuation,
     # so 520 raw docs is what restores ~260 usable -- the original's actual count.
     "set1_nq520_arxiv":     ["nq", "nq_extra", "arxiv"],
-    # 진단용 분해: Qwen 만 NQ 에서 한 건도 skip 되지 않았다(260/260 대
-    # Mistral 111/260). skip 조건은 "생성된 continuation < 16 토큰" 이므로
-    # Qwen 의 NQ 감독신호만 장황한 생성물에서 나온 것이 된다. 코퍼스를
-    # 갈라 학습해 그 차이가 회귀의 원인인지 본다.
+    # Single-corpus splits, for isolating where a regression comes from. A
+    # document is dropped when its generated continuation is shorter than
+    # MIN_HORIZON, and the drop rate differs sharply by backbone (Qwen kept
+    # 260/260 NQ documents against Mistral's 111/260), so training on one
+    # corpus at a time separates the corpus from the backbone.
     "diag_arxiv_only":      ["arxiv"],
     "diag_nq_only":         ["nq", "nq_extra"],
     "set2_nq520_fewshot":   ["nq", "nq_extra", "arxiv", "classify"],

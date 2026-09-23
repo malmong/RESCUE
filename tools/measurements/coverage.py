@@ -21,9 +21,9 @@ import torch
 import src.models.registry as _registry
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-sys.path.insert(0, "/tmp/claude-1001/-home-byungjun-kv-cache/3b6b1de3-4fe2-4802-ba8a-70577e2afe93/scratchpad")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from coverage_lib import compute_doc_scores  # noqa: E402
-from kvbench.learned.foresightkv_paper import ForesightKVJudgeScorer  # noqa: E402
+from src.utils.foresightkv_official import ForesightKVJudgeScorer  # noqa: E402
 
 MODEL_PATH = str(_registry.load("llama3_8b").path)
 # ForesightKV's own judge, trained by its authors; set the path to your copy.
@@ -34,7 +34,8 @@ TASK_DATA_PATHS = {
     "gov_report": str(_registry.data_root() / "LongBench" / "data" / "gov_report.jsonl"),
     "multifieldqa_en": str(_registry.data_root() / "LongBench" / "data" / "multifieldqa_en.jsonl"),
 }
-SCRATCH = Path("/tmp/claude-1001/-home-byungjun-kv-cache/3b6b1de3-4fe2-4802-ba8a-70577e2afe93/scratchpad")
+SCRATCH = Path(os.environ.get(
+    "RESCUE_SCRATCH", Path(__file__).resolve().parents[2] / "runs" / "coverage"))
 MAX_SEQ_LEN = 131072
 
 
@@ -42,7 +43,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--task", choices=sorted(TASK_DATA_PATHS), default="qasper")
     ap.add_argument("--limit", type=int, default=None)
-    ap.add_argument("--gpu", type=int, default=7)
+    ap.add_argument("--gpu", type=int, default=0)
     ap.add_argument("--start", type=int, default=0)
     args = ap.parse_args()
 
