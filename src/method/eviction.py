@@ -234,80 +234,6 @@ def _scale_additive_combine(s_recent: torch.Tensor, s_future: torch.Tensor, lam:
     return (s_recent + lam * scale * s_future) / (1.0 + lam)
 
 
-def _adaptive_lambda_from_concentration(s_future: torch.Tensor, b_remaining: int,
-                                        a: float, b: float, lam_max: float) -> float:
-    """rfc_adaptive_lambda: set this layer's lambda from how CONCENTRATED the
-    correction's own distribution is over this layer's candidates.
-
-    Motivation is estimator fusion, not domain detection: share_additive mixes
-    two estimates of future importance, and the mixing weight should follow how
-    much genuinely NEW ranking information the correction adds. Measured across
-    five LongBench tasks, the correction's top-B mass tracks the empirically
-    optimal lambda with Spearman -0.90 -- a correction that piles its mass onto
-    a few candidates is largely restating what the recent-window score already
-    ranks highly (its rank correlation with LaProx is highest exactly there), so
-    mixing it in only perturbs the ordering; a flatter correction is the one
-    carrying information the base does not have.
-
-    lambda = clamp(a - b * topB_mass, 0, lam_max), computed per layer from that
-    layer's own scores, so it adapts within a document as well as across tasks.
-    """
-    f = s_future.float().clamp_min(0.0)
-    share = f / f.sum(dim=-1, keepdim=True).clamp_min(1e-12)
-    k = max(1, min(int(b_remaining), share.shape[-1]))
-    mass = share.topk(k, dim=-1).values.sum(dim=-1).mean()
-    return float(max(0.0, min(lam_max, a - b * float(mass))))
-
-
-def _confidence_stats(mixed: torch.Tensor, dists: torch.Tensor, gate: torch.Tensor, agreement_beta: float) -> dict:
-    """rfc_objective="MP" raw confidence signals for this (layer, eviction-
-    step) call. mixed=F_i [H,N] (the exact gate-mixture .score() returns --
-    NOT renormalized here), dists=P_i^(k) [H,K,N], gate=g_k [H,K]. Reduces to
-    scalars by averaging the per-head raw statistics -- a reduction to match
-    section 11's layer x step granularity, not a rescaling of F/D_i against
-    each other, so it does not reintroduce the per-head/per-layer
-    normalization this design explicitly avoids elsewhere.
-
-    Q_(l,t)     = mean_h [ sum_i F_(h,i)^2 ]           (raw concentration)
-    D_bar_(l,t) = mean_(h,i) Std_k(P_(h,i)^(k))          (raw disagreement)
-    A_(l,t)     = exp(-agreement_beta * D_bar)
-    C_(l,t)     = Q * A
-    """
-    mixed_f = mixed.float()
-    Q = mixed_f.pow(2).sum(dim=-1).mean().item()
-    D_bar = dists.float().std(dim=1, unbiased=False).mean().item()
-    A = math.exp(-agreement_beta * D_bar)
-    C = Q * A
-    gate_mean = gate.float().mean(dim=0).tolist()  # [K], averaged over heads, for logging only
-    return {"Q": Q, "D_bar": D_bar, "A": A, "C": C, "gate_mean": gate_mean}
-
-
-def _lambda_from_confidence_stats(stats: dict, mode: str, lambda_base: float, confidence_alpha: float) -> float:
-    """lambda = lambda_base * (1 + confidence_alpha * {Q|A|C}), per
-    rfc_combine_mode-independent future_fusion ablation (spec section 13
-    B/C/D). mode="fixed" should never reach here (caller keeps the existing
-    lambda source in that case)."""
-    if mode == "concentration":
-        conf = stats["Q"]
-    elif mode == "agreement":
-        conf = stats["A"]
-    elif mode == "concentration_agreement":
-        conf = stats["C"]
-    else:
-        raise ValueError(f"unknown future_fusion mode {mode!r} (expected concentration/agreement/concentration_agreement)")
-    return lambda_base * (1.0 + confidence_alpha * conf)
-
-
-def _log_future_confidence(path: str, record: dict) -> None:
-    import json
-    from pathlib import Path as _Path
-
-    p = _Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record) + "\n")
-
-
 _MEMLOG = bool(os.environ.get("RESCUE_MEMLOG"))
 
 
@@ -1314,23 +1240,16 @@ class DynamicEvictionState:
         """Is the lambda this layer will use exactly 0, knowable before the
         correction is computed?
 
-        Only for the plain sources. A per-(layer, kv_head) gain tensor, a
-        per-layer schedule, an external future scorer or confidence fusion can
-        all produce a non-zero lambda that is not visible here, so those fall
-        through and the correction is computed as before.
+        Knowing this early is what makes a declined correction free: the
+        scorer's forward pass over every candidate in every layer is skipped
+        rather than computed and multiplied by zero.
+
+        An external future scorer supplies its own lambda, which is not visible
+        from here, so that case falls through and the correction is computed as
+        before.
         """
-        if self.layer_head_gain is not None:
-            return False
-        if getattr(self.cfg, "rfc_lambda_per_layer", None) is not None:
-            return False
         if self.external_future_scorer is not None:
             return False
-        if str(getattr(self.cfg, "future_fusion", "fixed")) != "fixed":
-            return False
-        if bool(getattr(self.cfg, "rfc_adaptive_lambda", False)):
-            return False          # lambda is derived FROM the correction
-        if float(getattr(self.cfg, "rfc_lambda_gate_tau", 0.0) or 0.0) > 0.0:
-            return False          # the redundancy gate reads the correction's own top-B
         sc = self.unified_rfc_scorer if self.unified_rfc_scorer is not None else self.rfc_scorer
         if sc is None or not hasattr(sc, "lambda_mix"):
             return False
@@ -1414,7 +1333,6 @@ class DynamicEvictionState:
             s_recent = torch.zeros(cache_len, device=key.device)
 
         k_cand = key[0]  # [num_kv_heads, cache_len, head_dim]
-        mp_confidence = None  # set below only for rfc_objective="MP" when adaptive fusion or logging needs it
         if using_unified:
             kv_repeat = max(1, self.model.config.num_attention_heads // self.model.config.num_key_value_heads)
             o_proj_fp32 = self._rfc_o_proj_fp32.get(layer_idx)
@@ -1426,22 +1344,7 @@ class DynamicEvictionState:
             activity = None
             if self.activity_recency and layer_idx < len(self.activity_recency):
                 activity = (self.activity_recency[layer_idx], self.activity_freq[layer_idx], self.activity_streak[layer_idx])
-            # Adaptive-lambda fusion (rfc_objective="MP" only) needs the raw
-            # per-prototype distributions/gate, not just .score()'s already-
-            # mixed F_i -- score_with_confidence() shares the exact same
-            # forward pass as .score() (see rfc_multi._prototype_forward), so
-            # this branch's F_i is byte-identical to the plain .score() path
-            # below when it fires; it only ADDS dists/gate alongside it.
-            needs_confidence = False
-            if needs_confidence:
-                conf_out = self.unified_rfc_scorer.score_with_confidence(q_ring, k_cand, layer_idx)
-                if conf_out is None:
-                    s_future = k_cand.new_zeros((k_cand.shape[0], k_cand.shape[1]))
-                else:
-                    mixed, dists, gate = conf_out
-                    s_future = mixed
-                    mp_confidence = (mixed, dists, gate)
-            elif self._lambda_is_zero():
+            if self._lambda_is_zero():
                 # lambda=0 means combine() returns s_recent untouched, so the
                 # correction it would be multiplied by is never read. Computing
                 # it anyway costs a full MLP pass over every candidate in every
@@ -1482,21 +1385,8 @@ class DynamicEvictionState:
             c_t = z_layer[-1]
             recent_q_flat = q_ring.flatten().to(key.device)
             s_future = self.rfc_scorer.score_future(recent_q_flat, k_cand, z_layer, c_t, layer_idx).to(key.device)
-        conf_stats = None
-        if mp_confidence is not None:
-            mixed, dists, gate = mp_confidence
-            conf_stats = _confidence_stats(mixed, dists, gate, float(self.cfg.agreement_beta))
-        if self.layer_head_gain is not None and layer_idx < self.layer_head_gain.shape[0]:
-            # Layer x kv_head-wise lambda (src/method/future_contrib/global_gain_train.py)
-            # -- overrides every other lambda source below with a per-kv-head
-            # tensor instead of one scalar for the whole layer.
-            lam = self.layer_head_gain[layer_idx].to(key.device).view(-1, 1)
-        elif self.cfg.rfc_lambda_per_layer is not None and layer_idx < len(self.cfg.rfc_lambda_per_layer):
-            lam = float(self.cfg.rfc_lambda_per_layer[layer_idx])
-        elif self.external_future_scorer is not None:
+        if self.external_future_scorer is not None:
             lam = float(self.cfg.rfc_lambda)
-        elif conf_stats is not None and self.cfg.future_fusion != "fixed":
-            lam = _lambda_from_confidence_stats(conf_stats, self.cfg.future_fusion, float(self.cfg.lambda_base), float(self.cfg.confidence_alpha))
         else:
             active_scorer = self.unified_rfc_scorer if using_unified else self.rfc_scorer
             lam = float(active_scorer.lambda_mix)
@@ -1518,123 +1408,9 @@ class DynamicEvictionState:
             # baseline exactly, never a loss.
             pe = getattr(self, "prompt_entropy", None)
             if pe is not None:
-                slope = float(getattr(self.cfg, "rfc_ppl_lambda_slope", 0.0) or 0.0)
-                if slope > 0.0:
-                    # Continuous form: instead of switching lambda between 0 and
-                    # --rfc-lambda, scale it with how far the prompt sits above
-                    # tau. The step gate is the slope -> infinity limit of this,
-                    # and a fixed lambda is the tau -> -infinity limit, so one
-                    # rule covers both and the sweep decides where between them
-                    # to sit. Still exactly 0 at or below tau, which is what
-                    # keeps the no-loss guarantee.
-                    lmax = float(getattr(self.cfg, "rfc_ppl_lambda_max", 0.0) or 0.0) or float(lam) * 4.0
-                    lam = max(0.0, min(lmax, slope * (float(pe) - ppl_tau)))
-                else:
-                    lam = lam if float(pe) >= ppl_tau else 0.0
+                lam = lam if float(pe) >= ppl_tau else 0.0
                 if os.environ.get("RESCUE_GATE_LOG"):
                     print(f"[PPLGATE] entropy={float(pe):.4f} lam={float(lam):.3f}", flush=True)
-        gate_tau = float(getattr(self.cfg, "rfc_lambda_gate_tau", 0.0) or 0.0)
-        if gate_tau > 0.0 and not torch.is_tensor(lam):
-            # REDUNDANCY GATE. The correction is worth mixing in only when it
-            # disagrees with the base ranker; when the two nominate largely the
-            # SAME tokens the correction adds no ranking information and can
-            # only perturb an already-good ordering, which is what produced
-            # every negative task (lcc -4.11, gov_report, multifieldqa_en).
-            # MEASURED ONLINE (gateprobe, 89 qasper docs / 66 lcc docs), the
-            # overlap turned out to be a property of the LAYER, not of the
-            # document or the task -- within one document layers differ ~20x,
-            # and the profile barely moves between tasks:
-            #            layer0  layer1  layer2  layer3
-            #   qasper    0.017   0.267   0.244   0.041
-            #   lcc       0.045   0.254   0.235   0.081
-            # So a DOCUMENT-scope gate cannot separate qasper from lcc: the
-            # median over the first layers is 0.15-0.25 for both, and at
-            # tau=0.08 it switched off even on qasper (27.67, i.e. baseline).
-            # (The offline statistic that appeared to separate them at 98.3%
-            # was computed on scores already averaged ACROSS layers, which is
-            # a different quantity and not one the gate can observe online.)
-            # What the measurement does support is a per-LAYER gate: layers 0
-            # and 3 carry a correction that is nearly orthogonal to the base
-            # ranking, layers 1 and 2 one that is largely redundant.
-            # rfc_gate_scope="layer" applies lambda only where it is not
-            # redundant, and is safe now that _scale_additive_combine divides
-            # by (1+lambda) -- per-layer lambda used to distort global_layer's
-            # cross-layer budget pooling through score scale (trec 54.00 ->
-            # 45.50), which was a scale artifact rather than the adaptation.
-            b_rem = int(self.cfg.budget_tokens or 128) - int(self.cfg.sink_tokens) - int(self.cfg.snapkv_obs_window)
-            if not hasattr(self, "_gate_overlaps"):
-                self._gate_overlaps = []
-                self._gate_lam = None
-            per_layer_scope = str(getattr(self.cfg, "rfc_gate_scope", "doc")) == "layer"
-            if per_layer_scope or self._gate_lam is None:
-                # Must match measure_reliability_stats.py's definition exactly,
-                # since tau is read off that distribution: scores AVERAGED over
-                # kv-heads (which is also what _prune_rfc_global_layer actually
-                # ranks on -- scores.mean(dim=0)), and restricted to the
-                # NON-protected candidates. Measuring per-head over the whole
-                # cache instead put the 32 recent-window tokens -- which LaProx
-                # scores very highly, so they fill its top-B -- into the
-                # comparison and made every task look redundant: the gate then
-                # switched off even on qasper (27.67 instead of ~34.8).
-                r = s_recent_term.float().mean(dim=0)
-                f = s_future.float().mean(dim=0)
-                n_tot = int(r.shape[-1])
-                sink_n = max(0, int(self.cfg.sink_tokens))
-                obs_n = max(0, int(self.cfg.snapkv_obs_window))
-                mask = torch.ones(n_tot, dtype=torch.bool, device=r.device)
-                if sink_n:
-                    mask[:min(sink_n, n_tot)] = False
-                if obs_n:
-                    mask[max(0, n_tot - obs_n):] = False
-                r, f = r[mask], f[mask]
-                k = max(1, min(b_rem, int(r.shape[-1])))
-                top_r = set(r.topk(k).indices.tolist())
-                top_f = set(f.topk(k).indices.tolist())
-                ov = len(top_r & top_f) / k
-                if per_layer_scope:
-                    # This layer decides for itself; nothing is accumulated or
-                    # frozen, so every layer of every document is judged on its
-                    # own redundancy.
-                    lam = lam if ov < gate_tau else 0.0
-                else:
-                    self._gate_overlaps.append(float(ov))
-                    med = sorted(self._gate_overlaps)[len(self._gate_overlaps) // 2]
-                    lam = lam if med < gate_tau else 0.0
-                    if len(self._gate_overlaps) >= int(getattr(self.cfg, "rfc_adaptive_warmup", 4)):
-                        self._gate_lam = lam      # freeze for the rest of the document
-                if os.environ.get("RESCUE_GATE_LOG"):
-                    print(f"[GATE] layer={layer_idx} n_cand={int(r.shape[-1])} "
-                          f"k={k} overlap={ov:.4f} lam={float(lam):.2f}", flush=True)
-            else:
-                lam = self._gate_lam
-        elif getattr(self.cfg, "rfc_adaptive_lambda", False) and not torch.is_tensor(lam):
-            b_rem = int(self.cfg.budget_tokens or 128) - int(self.cfg.sink_tokens) - int(self.cfg.snapkv_obs_window)
-            a, b_, mx = (float(self.cfg.rfc_adaptive_a), float(self.cfg.rfc_adaptive_b),
-                         float(self.cfg.rfc_adaptive_max))
-            if getattr(self.cfg, "rfc_adaptive_scope", "layer") == "doc":
-                # One lambda for the whole document. Per-LAYER lambda measurably
-                # hurt trec (54.00 fixed -> 45.50), and global_layer allocation is
-                # the likely reason: it pools budget ACROSS layers by comparing
-                # each layer's normalized scores, so letting lambda differ per
-                # layer changes those scores' scale layer-to-layer and distorts
-                # the pooling itself. Freezing one value keeps the cross-layer
-                # comparison on a common scale.
-                if not hasattr(self, "_adaptive_masses"):
-                    self._adaptive_masses = []
-                    self._adaptive_lam = None
-                if self._adaptive_lam is None:
-                    f = s_future.float().clamp_min(0.0)
-                    sh = f / f.sum(dim=-1, keepdim=True).clamp_min(1e-12)
-                    k = max(1, min(b_rem, sh.shape[-1]))
-                    self._adaptive_masses.append(float(sh.topk(k, dim=-1).values.sum(dim=-1).mean()))
-                    med = sorted(self._adaptive_masses)[len(self._adaptive_masses) // 2]
-                    lam = float(max(0.0, min(mx, a - b_ * med)))
-                    if len(self._adaptive_masses) >= int(getattr(self.cfg, "rfc_adaptive_warmup", 4)):
-                        self._adaptive_lam = lam       # freeze for the rest of the document
-                else:
-                    lam = self._adaptive_lam
-            else:
-                lam = _adaptive_lambda_from_concentration(s_future, b_rem, a, b_, mx)
         if self.cfg.rfc_combine_mode == "rank_gate":
             total = _rank_gate_combine(s_recent_term, s_future, lam)
         elif self.cfg.rfc_combine_mode == "rank_additive":
@@ -1657,21 +1433,6 @@ class DynamicEvictionState:
             total = _scale_additive_combine(s_recent_term, s_future, lam)
         else:
             total = float(self.cfg.rfc_recent_weight) * s_recent_term + lam * s_future
-        if conf_stats is not None and self.cfg.future_confidence_log_path:
-            recent_f = s_recent_term.float()
-            future_f = s_future.float()
-            _log_future_confidence(self.cfg.future_confidence_log_path, {
-                "layer_idx": layer_idx,
-                "step": cur_t if using_unified else None,
-                "num_candidates": int(s_future.shape[-1]),
-                "future_fusion": self.cfg.future_fusion,
-                "lambda": float(lam) if not torch.is_tensor(lam) else lam.mean().item(),
-                **conf_stats,
-                "observed_score_min": recent_f.min().item(), "observed_score_max": recent_f.max().item(),
-                "observed_score_mean": recent_f.mean().item(), "observed_score_std": recent_f.std().item(),
-                "future_score_min": future_f.min().item(), "future_score_max": future_f.max().item(),
-                "future_score_mean": future_f.mean().item(), "future_score_std": future_f.std().item(),
-            })
         return total.contiguous()
 
     def _learned_attention_features(self, layer_idx: int, layer_attn: torch.Tensor, key: torch.Tensor) -> dict[str, torch.Tensor]:
@@ -2381,10 +2142,6 @@ class DenseEvictionGenerator:
             else:
                 self.learned_scorer = LearnedScorer(cfg.learned_checkpoint, device="cpu")
         self.layer_head_gain = None
-        if cfg.normalized_policy() == "rfc" and cfg.rfc_layer_head_gain_path:
-            gain_device = next(model.parameters()).device
-            gain_payload = torch.load(cfg.rfc_layer_head_gain_path, map_location="cpu")
-            self.layer_head_gain = gain_payload["gain"].to(gain_device).float()
         self.ragged_decoder = RaggedLlamaLikeDecoder(model) if (
             (cfg.normalized_policy() == "laprox" and cfg.laprox_allocation in {"global_layer", "global_head"})
             or (cfg.normalized_policy() == "rfc" and cfg.rfc_allocation == "global_layer")
@@ -2470,8 +2227,7 @@ class DenseEvictionGenerator:
             keep_gate = bool(getattr(base_cfg, "rfc_fidelity_with_gate", False))
             self.cfg = _dc_replace(
                 base_cfg, rfc_lambda=lam,
-                rfc_ppl_gate_tau=(base_cfg.rfc_ppl_gate_tau if keep_gate else 0.0),
-                rfc_lambda_gate_tau=0.0)
+                rfc_ppl_gate_tau=(base_cfg.rfc_ppl_gate_tau if keep_gate else 0.0))
             for sc in (self.rfc_scorer, self.unified_rfc_scorer):
                 if sc is not None and hasattr(sc, "lambda_mix"):
                     sc.lambda_mix = lam
@@ -2603,8 +2359,7 @@ class DenseEvictionGenerator:
                           os.environ.get("RESCUE_CACHE_SELECT", "").split(",") if c.strip()]
 
         def _set_policy(name):
-            self.cfg = _dc_replace(base_cfg, policy=name,
-                                   rfc_ppl_gate_tau=0.0, rfc_lambda_gate_tau=0.0)
+            self.cfg = _dc_replace(base_cfg, policy=name, rfc_ppl_gate_tau=0.0)
 
         if _cand_policies:
             cands, apply_cand = _cand_policies, _set_policy
