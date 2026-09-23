@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""What the selector's decisions are worth, not just how often they are right.
+"""Table 13 (tab:selector_quadrants). What the selector's decisions are worth.
 
 The one-token probe picks the retrospectively better cache on only a little over
 half the documents where the two arms differ, yet it recovers a large share of
@@ -15,7 +15,7 @@ Documents whose selector score matches neither arm are excluded: the selector
 serves one of the two caches, so a third score means the run does not line up
 with either arm and the decision cannot be read.
 
-    python tables/make_selector_quadrants_table.py --format text
+    python tables/make_table_13.py --format text
 """
 from __future__ import annotations
 

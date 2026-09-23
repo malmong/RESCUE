@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""Comparison with methods that predict future importance instead of correcting.
+"""Table 5 (tab:future_aware).
+
+Comparison with methods that predict future importance instead of correcting.
 
 LookaheadKV and ForesightKV replace the base policy rather than correct it, so
 their scores are absolute, not deltas: a single column each, against every base
@@ -7,7 +9,7 @@ policy under RESCUE. The point of the table is that the margin is not uniform --
 LookaheadKV matches or exceeds RESCUE on several tasks -- which is why the paper
 reports the per-base spread rather than one number.
 
-    python tables/make_future_aware_table.py --format text
+    python tables/make_table_5.py --format text
 """
 from __future__ import annotations
 

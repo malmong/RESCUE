@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""How much of a reported margin is the seed?
+"""Table 14 (tab:seed_variance). How much of a reported margin is the seed?
 
 The scorer is small and trained on a few hundred documents, so retraining it
 under a different seed moves the downstream score. The margin between two
@@ -8,7 +8,7 @@ sits beside the target comparison rather than in an appendix of its own.
 
 Three seeds, two base policies, the three tasks the paper reports.
 
-    python tables/make_seed_variance_table.py --format text
+    python tables/make_table_14.py --format text
 """
 from __future__ import annotations
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""Control: give the selector two existing caches instead of two lambdas.
+"""Table 11 (tab:cache_select).
+
+Control: give the selector two existing caches instead of two lambdas.
 
 Same one-token probe, same KL criterion; the candidates are SnapKV's cache and
 ForesightKV's rather than lambda 0 and 1. If choosing between two off-the-shelf
@@ -11,7 +13,7 @@ never reaches the eviction machinery that builds candidate caches, so it cannot
 be a candidate here. It is also the more expensive of the two comparators,
 which makes this the harder control.
 
-    python tables/make_cache_select_table.py --format text
+    python tables/make_table_11.py --format text
 """
 from __future__ import annotations
 

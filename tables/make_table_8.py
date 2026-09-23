@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""What the selector costs, and where.
+"""Table 8 (tab:runtime_overhead). What the selector costs, and where.
 
 RESCUE is about twice the most expensive predicted-future method it is compared
 against, not less than it: this is accuracy bought with latency, not latency
@@ -9,7 +9,7 @@ the size of the model, is what the cost scales with.
 
 Read from results/latency.csv, which scripts/run_latency.sh regenerates.
 
-    python tables/make_overhead_table.py --format text
+    python tables/make_table_8.py --format text
 """
 from __future__ import annotations
 

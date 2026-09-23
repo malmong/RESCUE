@@ -26,8 +26,8 @@ evaluation/      run a LongBench cell under OpenCompass
 train/           cache features, then fit one scorer per (model, base policy)
 tools/           turn evaluation output into results/*.csv
 results/         trained scorers, and every score the paper reports
-tables/          one script per table in the paper
-figures/         one script per figure in the paper
+tables/          make_table_<n>.py, numbered as the paper numbers them
+figures/         plot_figure_<n>.py, likewise
 scripts/         the exact commands behind each experiment
 ```
 
@@ -40,17 +40,24 @@ GPU:
 ```bash
 pip install -r requirements.txt
 
-python tables/make_main_table.py          --format text
-python tables/make_ablation_table.py      --format text
-python tables/make_budget_sweep_table.py  --format text
-python tables/make_cache_select_table.py  --format text
-python tables/make_probe_length_table.py  --format text
-python tables/make_future_aware_table.py  --format text
+# every table in the paper, numbered as the paper numbers them
+python tables/make_table_1.py  --format text     # LongBench, all three backbones
+python tables/make_table_2.py  --format text     # correction vs. selector ablation
+python tables/make_table_6.py  --format text     # budget sweep
+python tables/make_table_11.py --format text     # cache-selection control
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
+    python tables/make_table_$n.py --out tables/out/table_$n.tex
+done
 
-python figures/plot_safety.py
-python figures/plot_overlap.py
-python figures/plot_headroom.py
+python figures/plot_figure_1.py    # where the oracle's top-B entries come from
+python figures/plot_figure_3.py    # base -> oracle span, with RESCUE on it
+python figures/plot_figure_4.py    # per-cell and per-document verification
 ```
+
+Figure 2 is the architecture diagram and has no script. One further table,
+`tables/make_appendix_lambda_candidates.py`, renders a comparison the paper
+reports as prose rather than as a numbered table.
+
 
 `--format latex` emits the table as it appears in the paper; `--out PATH`
 writes to a file instead of stdout. Figures land in `figures/out/`.

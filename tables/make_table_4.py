@@ -1,12 +1,12 @@
 #!/usr/bin/env python
-"""Complementarity at a matched budget.
+"""Table 4 (tab:budget_matched). Complementarity at a matched budget.
 
 A union of two selections retains more of the oracle set than either alone, but
 it is also larger, so the comparison says nothing on its own. Matching the sizes
 is what makes the question answerable: given the same number of entries, how
 much does each rule retain?
 
-    python tables/make_budget_matched_table.py --format text
+    python tables/make_table_4.py --format text
 """
 from __future__ import annotations
 

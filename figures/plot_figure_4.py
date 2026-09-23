@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""Figure 3: verification at two levels -- per cell, and per document.
+"""Figure 4 (fig:safety).
+
+Verification at two levels: per cell, and per document.
 
 Left: each (base, task) cell with the correction applied to every document
 against the same correction gated by the selector. Points above the diagonal
@@ -11,7 +13,7 @@ accepted corrections move the score -- rejecting returns the base cache and
 contributes exactly zero -- and among the accepts, the right decisions sit on
 larger differences than the wrong ones.
 
-    python figures/plot_safety.py
+    python figures/plot_figure_4.py
 """
 from __future__ import annotations
 
@@ -204,6 +206,6 @@ for sp in ("top", "right", "left"): axR.spines[sp].set_visible(False)
 axR.grid(axis="x", alpha=.22, lw=.7); axR.set_axisbelow(True)
 
 fig.tight_layout()
-save(fig, "fig3_safety", args.out)
+save(fig, "figure_4", args.out)
 print(f"  {len(cells)} cells, harmful {n_harm_x} -> {n_harm_y}, "
       f"{Q['n_decisive']} deciding documents")

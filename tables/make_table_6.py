@@ -1,12 +1,14 @@
 #!/usr/bin/env python
-"""Budget sweep: the correction is worth more the more the base policy must drop.
+"""Table 6 (tab:budget_sweep).
+
+Budget sweep: the correction is worth more the more the base policy must drop.
 
 The residual view predicts that a policy given more budget retains more of the
 oracle set on its own, leaving less residual to rescue. The sweep tests that
 downstream rather than at the level of set overlap: the same eighty cells at
 B=128, 256 and 1024.
 
-    python tables/make_budget_sweep_table.py --format text
+    python tables/make_table_6.py --format text
 """
 from __future__ import annotations
 

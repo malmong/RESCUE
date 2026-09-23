@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""Section 5.4 ablation: what the correction contributes, and what the selector
+"""Table 2 (tab:selector_ablation).
+
+What the correction contributes, and what the selector
 contributes on top of it.
 
 Six arms over the same (base, task) cells, paired so the deltas are within-cell:
@@ -14,7 +16,7 @@ Six arms over the same (base, task) cells, paired so the deltas are within-cell:
 "Harmful" counts cells that lose at least a point: the average and the tail are
 different claims, and the selector is what moves the tail.
 
-    python tables/make_ablation_table.py --format text
+    python tables/make_table_2.py --format text
 """
 from __future__ import annotations
 

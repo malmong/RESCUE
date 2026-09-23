@@ -1,14 +1,14 @@
 #!/usr/bin/env python
-"""Table 1: every base policy with and without RESCUE, on all three backbones.
+"""Table 1 (tab:longbench-mlp). Every base policy with and without RESCUE.
 
 Each base is measured against its own baseline. The rescue set is defined by
 that base's own misses, so a shared reference would be meaningless; the
 question a row pair answers is whether correcting *this* policy helps, not
 which policy is best.
 
-    python tables/make_main_table.py                 # LaTeX to stdout
-    python tables/make_main_table.py --format text   # readable in a terminal
-    python tables/make_main_table.py --out tables/out/main.tex
+    python tables/make_table_1.py                 # LaTeX to stdout
+    python tables/make_table_1.py --format text   # readable in a terminal
+    python tables/make_table_1.py --out tables/out/main.tex
 """
 from __future__ import annotations
 

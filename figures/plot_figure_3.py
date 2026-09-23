@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""Figure: where RESCUE lands between the base policy and an oracle future signal.
+"""Figure 3 (fig:headroom).
+
+Where RESCUE lands between the base policy and an oracle.
 
 Left: each task as a span from the mean base score to the ceiling the same
 correction reaches when it is driven by real future attention, taken from an
@@ -14,7 +16,7 @@ almost none.
 Oracle runs exist for 14 of the 16 tasks: NarrativeQA and GovReport exceed
 device memory under the oracle objective, so they are absent rather than zero.
 
-    python figures/plot_headroom.py
+    python figures/plot_figure_3.py
 """
 from __future__ import annotations
 
@@ -124,7 +126,7 @@ h, l = axL.get_legend_handles_labels()
 fig.legend(h, l, loc="lower center", ncol=4, frameon=False, fontsize=14,
            handletextpad=0.5, columnspacing=1.8, bbox_to_anchor=(0.5, -0.012))
 fig.tight_layout(rect=(0, 0.062, 1, 1))
-save(fig, "figH_headroom", args.out)
+save(fig, "figure_3", args.out)
 for d in rows[::-1]:
     fr = "n/a" if d["head"] < 1 else f"{100*d['gain']/d['head']:.0f}%"
     print(f"{d['task']:22s} {d['base']:7.2f} {d['rescue']:7.2f} {d['oracle']:7.2f} "

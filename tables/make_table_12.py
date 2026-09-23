@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""Bounding the blast radius: restrict the correction to k contested slots.
+"""Table 12 (tab:kslot).
+
+Bounding the blast radius: restrict the correction to k contested slots.
 
 The obvious way to make a correction safe is to bound how much of the cache it
 may change -- reserve the base policy's top-(B-k) outright and let the corrected
@@ -12,7 +14,7 @@ correction entirely on the documents where it would hurt and leaves it
 unbounded on the rest. The restriction duplicates the selector's job and does
 it worse.
 
-    python tables/make_kslot_table.py --format text
+    python tables/make_table_12.py --format text
 """
 from __future__ import annotations
 

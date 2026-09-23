@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""Does a finer candidate grid help the selector?
+"""Appendix (no numbered table) (sec:lambda_candidates).
+
+Does a finer candidate grid help the selector?
 
 The selector compares two candidates, lambda in {0, 1} -- the base cache and the
 fully corrected one. A finer grid would let it interpolate. Against
@@ -10,7 +12,7 @@ latency and scales with their number.
 This is a cost argument. Six cells cannot rule out that intermediate lambdas
 help somewhere; they show no evidence that they help here.
 
-    python tables/make_lambda_candidates_table.py --format text
+    python tables/make_appendix_lambda_candidates.py --format text
 """
 from __future__ import annotations
 

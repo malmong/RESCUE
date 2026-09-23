@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""Does the correction recover what the base policy actually missed?
+"""Table 3 (tab:mechanism).
+
+Does the correction recover what the base policy actually missed?
 
 Two set-level quantities per base policy, against the downstream gain:
 
@@ -15,7 +17,7 @@ a wash.
 Set-level numbers come from results/measurements/mechanism.csv; the downstream
 column is computed from results/scores.csv.
 
-    python tables/make_mechanism_table.py --format text
+    python tables/make_table_3.py --format text
 """
 from __future__ import annotations
 

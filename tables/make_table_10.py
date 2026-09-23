@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""Probe length: how many tokens the selector decodes before it decides.
+"""Table 10 (tab:probe_length).
+
+Probe length: how many tokens the selector decodes before it decides.
 
 The probe is the selector's only cost that scales with a setting, so its length
 is the one knob with a direct latency consequence. It is swept on LaProx and
@@ -11,7 +13,7 @@ The latency column is read from ``results/latency.csv`` when that file is
 present; it is measurement, not arithmetic over scores, so it is absent from a
 checkout that has not run ``scripts/run_latency.sh``.
 
-    python tables/make_probe_length_table.py --format text
+    python tables/make_table_10.py --format text
 """
 from __future__ import annotations
 

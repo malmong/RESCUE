@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""How much of the reachable headroom does the correction actually take?
+"""Table 7 (tab:headroom).
+
+How much of the reachable headroom does the correction actually take?
 
 A raw gain says nothing about whether a task was hard. The ceiling here is the
 same correction driven by *real* future attention, read off an un-evicted
@@ -10,7 +12,7 @@ future importance would be worth.
 Recovery is `(RESCUE - base) / (oracle - base)`, undefined where the correction
 loses ground.
 
-    python tables/make_headroom_table.py --format text
+    python tables/make_table_7.py --format text
 """
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Figure 1(b): where the oracle's top-B entries actually come from.
+"""Figure 1 (fig:budget_overlap). Where the oracle's top-B entries come from.
 
 For each budget, the oracle set -- the top-B entries by future attention mass --
 is split by which signal retains it: both, the observed signal only, the
@@ -10,7 +10,7 @@ largest single slice at the budget the paper works at.
 Measured values come from results/measurements/coverage_by_budget.csv, which
 tools/measurements/coverage.py produces.
 
-    python figures/plot_overlap.py
+    python figures/plot_figure_1.py
 """
 from __future__ import annotations
 
@@ -100,4 +100,4 @@ for text in legend.get_texts():
     text.set_fontweight("bold")
 
 fig.tight_layout()
-save(fig, "figF_budget_overlap", args.out)
+save(fig, "figure_1", args.out)

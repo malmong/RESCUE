@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""Where the correction earns, and where the selector earns.
+"""Table 9 (tab:task_decomp_table).
+
+Where the correction earns, and where the selector earns.
 
 The two components do not help the same tasks. On tasks the correction already
 handles, the selector's job is to stay out of the way and it costs a little; on
@@ -9,7 +11,7 @@ one average hides both halves, which is why the paper reports this split.
 Both columns are averaged over the five base policies, so each row is a task
 rather than a cell.
 
-    python tables/make_task_decomp_table.py --format text
+    python tables/make_table_9.py --format text
 """
 from __future__ import annotations
 
