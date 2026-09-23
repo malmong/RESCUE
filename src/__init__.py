@@ -1,1 +1,0 @@
-"""Reference implementation for RESCUE."""

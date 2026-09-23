@@ -5,12 +5,12 @@ numbers can be checked without a GPU, model weights, or benchmark data.
 
 | file | what it is |
 |---|---|
-| `scores.csv` | every LongBench cell: `model, arm, base, budget, task, score`. Built by `tools/export_results.py` from evaluation output. |
-| `per_document.csv` | each evaluated document scored under three arms, plus the KL margin the selector measured. Built by `tools/export_per_document.py`. |
+| `scores.csv` | every LongBench cell: `model, arm, base, budget, task, score`. Built by `scripts/export_results.py` from evaluation output. |
+| `per_document.csv` | each evaluated document scored under three arms, plus the KL margin the selector measured. Built by `scripts/export_per_document.py`. |
 | `checkpoints/` | the trained residual scorers, one per (model, base policy) and per budget for the sweep. 26 files, 316 KB. |
 | `measurements/` | quantities that are measured rather than derived from scores: signal coverage by budget, the latency breakdown. |
-| `samples/` | raw model predictions for a few cells, one per LongBench metric family, with the references and the score each document received. `tools/verify_samples.py` recomputes them. |
-| `summaries/` | per-run scores written by `evaluation/eval_longbench.py` as new runs finish. |
+| `samples/` | raw model predictions for a few cells, one per LongBench metric family, with the references and the score each document received. `scripts/verify_samples.py` recomputes them. |
+| `summaries/` | per-run scores written by `scripts/evaluate.py` as new runs finish. |
 
 ## `arm` in `scores.csv`
 
@@ -38,7 +38,7 @@ it was scored against, and the score it got. Recomputing those scores with the
 official metric is what ties the aggregate to something inspectable:
 
 ```bash
-python tools/verify_samples.py
+python scripts/verify_samples.py
 ```
 
 ```
@@ -58,9 +58,9 @@ LongBench ones -- the same code path the evaluation used.
 ## Rebuilding
 
 ```bash
-python tools/export_results.py      --runs /path/to/opencompass_outputs
-python tools/export_per_document.py --runs /path/to/opencompass_outputs
-python tools/export_samples.py      --runs /path/to/opencompass_outputs
+python scripts/export_results.py      --runs /path/to/opencompass_outputs
+python scripts/export_per_document.py --runs /path/to/opencompass_outputs
+python scripts/export_samples.py      --runs /path/to/opencompass_outputs
 ```
 
 The first is seconds. The second re-scores every document with the official

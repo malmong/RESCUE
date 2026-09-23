@@ -20,22 +20,22 @@ for base in "${BASES[@]}"; do
   ckpt="results/checkpoints/rescue_${MODEL}_${base}.pt"
   [ -f "$ckpt" ] || continue
 
-  python evaluation/eval_longbench.py --model "$MODEL" --method rescue --base "$base" \
+  python scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
       --checkpoint "$ckpt" --task all --gpu "$GPU" --lambdas 1 --tag corr
 
   if [ -f "$FF" ]; then
-    python evaluation/eval_longbench.py --model "$MODEL" --method rescue --base "$base" \
+    python scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
         --checkpoint "$FF" --task all --gpu "$GPU" --lambdas 1 --tag ff
-    python evaluation/eval_longbench.py --model "$MODEL" --method rescue --base "$base" \
+    python scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
         --checkpoint "$FF" --task all --gpu "$GPU" --tag ffsel
   fi
 
   for budget in 256 1024; do
     b_ckpt="results/checkpoints/rescue_${MODEL}_${base}_b${budget}.pt"
-    python evaluation/eval_longbench.py --model "$MODEL" --method "$base" \
+    python scripts/evaluate.py --model "$MODEL" --method "$base" \
         --task all --gpu "$GPU" --budget-tokens "$budget" --tag "b${budget}"
     [ -f "$b_ckpt" ] || continue
-    python evaluation/eval_longbench.py --model "$MODEL" --method rescue --base "$base" \
+    python scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
         --checkpoint "$b_ckpt" --task all --gpu "$GPU" --budget-tokens "$budget" --tag "b${budget}"
   done
 
@@ -43,7 +43,7 @@ for base in "${BASES[@]}"; do
   case "$base" in
     snapkv|laprox)
       for p in 2 4 8; do
-        python evaluation/eval_longbench.py --model "$MODEL" --method rescue --base "$base" \
+        python scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
             --checkpoint "$ckpt" --task all --gpu "$GPU" --probe-len "$p" --tag "p${p}"
       done ;;
   esac

@@ -17,19 +17,15 @@ base policy exactly.
 ## What is here
 
 ```
-configs/         one YAML per backbone: context limit, budgets, selector settings
-src/method/      the generator, the eviction hooks, the 18 features, the scorer
-src/models/      the model registry
-src/utils/       base policy scoring (SnapKV, LaProx, H2O, LAVa, R-KV)
-inference/       generate from one prompt under any policy
-evaluation/      run a LongBench cell under OpenCompass
-train/           cache features, then fit one scorer per (model, base policy)
-tools/           turn evaluation output into results/*.csv
-results/         trained scorers, every score the paper reports, and
-                 prediction samples for checking the metrics
-tables/          make_table_<n>.py, numbered as the paper numbers them
-figures/         plot_figure_<n>.py, likewise
-scripts/         the exact commands behind each experiment
+rescue/       the method: eviction and the selector, the 18 features, the
+              scorer, the base policies, the model registry
+configs/      one YAML per backbone: context limit, budgets, selector settings
+scripts/      everything you run: generate, evaluate, train, export, measure
+analysis/     table_<n>.py and figure_<n>.py, numbered as the paper numbers
+              them, over one shared loader (data.py)
+results/      trained scorers, every score the paper reports, and prediction
+              samples for checking the metrics
+tests/        a bit-exact regression check for edits to the eviction path
 ```
 
 ## Reproducing the paper without a GPU
@@ -42,32 +38,32 @@ GPU:
 pip install -r requirements.txt
 
 # every table in the paper, numbered as the paper numbers them
-python tables/make_table_1.py  --format text     # LongBench, all three backbones
-python tables/make_table_2.py  --format text     # correction vs. selector ablation
-python tables/make_table_6.py  --format text     # budget sweep
-python tables/make_table_11.py --format text     # cache-selection control
+python analysis/table_1.py  --format text     # LongBench, all three backbones
+python analysis/table_2.py  --format text     # correction vs. selector ablation
+python analysis/table_6.py  --format text     # budget sweep
+python analysis/table_11.py --format text     # cache-selection control
 for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
-    python tables/make_table_$n.py --out tables/out/table_$n.tex
+    python analysis/table_$n.py --out analysis/out/table_$n.tex
 done
 
-python figures/plot_figure_1.py    # where the oracle's top-B entries come from
-python figures/plot_figure_3.py    # base -> oracle span, with RESCUE on it
-python figures/plot_figure_4.py    # per-cell and per-document verification
+python analysis/figure_1.py    # where the oracle's top-B entries come from
+python analysis/figure_3.py    # base -> oracle span, with RESCUE on it
+python analysis/figure_4.py    # per-cell and per-document verification
 ```
 
 Figure 2 is the architecture diagram and has no script. One further table,
-`tables/make_appendix_lambda_candidates.py`, renders a comparison the paper
+`analysis/appendix_lambda_candidates.py`, renders a comparison the paper
 reports as prose rather than as a numbered table.
 
 
 `--format latex` emits the table as it appears in the paper; `--out PATH`
-writes to a file instead of stdout. Figures land in `figures/out/`.
+writes to a file instead of stdout. Figures land in `analysis/out/`.
 
 `results/scores.csv` is a set of numbers, and numbers in a file can be
 anything. `results/samples/` carries the text underneath a few of them -- the
 model's actual generations, their references, and the score each document
 received, one sample per LongBench metric family. `python
-tools/verify_samples.py` recomputes those scores with the official metric and
+scripts/verify_samples.py` recomputes those scores with the official metric and
 reports whether they come back. That step needs OpenCompass; everything above
 it does not.
 
@@ -99,7 +95,7 @@ repo's adapter directly.
 ### 2. One prompt
 
 ```bash
-python inference/inference.py --model llama3_8b --method rescue --base snapkv \
+python scripts/generate.py --model llama3_8b --method rescue --base snapkv \
     --checkpoint results/checkpoints/rescue_llama3_8b_snapkv.pt \
     --prompt-file document.txt --question "Who signed the treaty?" --verbose
 ```
@@ -110,8 +106,8 @@ candidate cache against the dense one, and which candidate won.
 ### 3. A benchmark cell
 
 ```bash
-python evaluation/eval_longbench.py --model llama3_8b --method snapkv --task qasper
-python evaluation/eval_longbench.py --model llama3_8b --method rescue --base snapkv \
+python scripts/evaluate.py --model llama3_8b --method snapkv --task qasper
+python scripts/evaluate.py --model llama3_8b --method rescue --base snapkv \
     --checkpoint results/checkpoints/rescue_llama3_8b_snapkv.pt --task qasper
 ```
 
@@ -125,7 +121,7 @@ so this is only needed to reproduce training itself:
 
 ```bash
 bash scripts/build_corpora.sh                       # NQ + arXiv, from the Hub
-python train/train.py --model llama3_8b --base snapkv
+python scripts/train.py --model llama3_8b --base snapkv
 ```
 
 A scorer is specific to a (model, base policy, budget) triple, because its
@@ -143,7 +139,7 @@ already makes correctly.
 
 **Features.** 18 per entry: nine raw statistics and their nine within-layer
 ranks. The raw nine are `current_qk, mean_qk, max_qk, var_qk, slope_qk, k_norm,
-v_norm, vwo_norm, age` (`src/method/features.py`). None reference the base
+v_norm, vwo_norm, age` (`rescue/features.py`). None reference the base
 policy, so the expensive part of feature caching is shared across policies.
 
 **Combination.** `S = s_recent + λ · (Σs_recent / Σs_future) · s_future`. The
@@ -200,5 +196,22 @@ setting rather than streaming or chunked prefill.
   demonstrations or raw code, and the official harness does not wrap them. This
   is enforced in the registry rather than left to the caller.
 - **LookaheadKV** patches the model class and runs its own decoder, so it is
-  reachable from `evaluation/` but not from `inference/`. It needs the authors'
+  reachable from `scripts/evaluate.py` but not from `scripts/generate.py`. It needs the authors'
   own checkout; set `RESCUE_LOOKAHEADKV_ROOT`.
+
+## Third-party components
+
+Nothing third-party is vendored here; each is installed or cloned by the user,
+so this repository carries no code under another project's licence.
+
+| | role | licence |
+|---|---|---|
+| [OpenCompass](https://github.com/open-compass/opencompass) | the evaluation harness and its implementations of the official LongBench metrics | Apache-2.0 |
+| [LongBench](https://github.com/THUDM/LongBench) | the benchmark | MIT |
+| Llama-3.1, Mistral-v0.3, Qwen3 | backbones, downloaded from the Hub under their own model licences | see each model card |
+| [ForesightKV], [LookaheadKV] | comparators, imported only when their own method is selected | see each repository |
+
+The base policies -- SnapKV, LaProx, H2O, LAVa, R-KV -- are reimplementations
+written against each method's released code and defaults rather than copies of
+it. Where a method's code and its paper disagree, the code's behaviour is
+followed and the divergence is recorded at the call site.

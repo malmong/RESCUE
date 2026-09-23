@@ -9,7 +9,6 @@ assets/
 # Evaluation output. results/scores.csv is the committed distillation of it.
 runs/
 
-# Rendered tables and figures; the scripts under tables/ and figures/ rebuild
-# them from results/ in seconds.
-tables/out/
-figures/out/
+# Rendered tables and figures; the scripts under analysis/ rebuild them from
+# results/ in seconds.
+analysis/out/

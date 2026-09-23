@@ -13,6 +13,6 @@ export RESCUE_CORPUS_DIR="$OUT"
 
 for s in prepare_nq_corpus prepare_nq_corpus_extra prepare_arxiv_corpus; do
   echo "== $s"
-  python "train/corpora/$s.py"
+  python "scripts/corpora/$s.py"
 done
 echo "corpora -> $OUT"

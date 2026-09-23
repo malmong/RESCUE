@@ -4,7 +4,7 @@
 #   bash scripts/run_latency.sh llama3_8b 0
 #
 # RESCUE_TIMING=1 makes the generator emit one [TIMING] line per document with
-# prefill / select / evict split out; tools/export_latency.py turns the log into
+# prefill / select / evict split out; scripts/export_latency.py turns the log into
 # results/latency.csv, which the overhead table and the probe-length table read.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -17,7 +17,7 @@ mkdir -p "$LOG"
 
 run() {  # run <tag> <extra args...>
   local tag="$1"; shift
-  RESCUE_TIMING=1 python evaluation/eval_longbench.py --model "$MODEL" --task "$TASK" \
+  RESCUE_TIMING=1 python scripts/evaluate.py --model "$MODEL" --task "$TASK" \
       --gpu "$GPU" --tag "tm_$tag" "$@" 2>&1 | tee "$LOG/$tag.log"
 }
 
@@ -29,4 +29,4 @@ for p in 1 2 4 8; do
       --checkpoint "results/checkpoints/rescue_${MODEL}_snapkv.pt" --probe-len "$p"
 done
 
-python tools/export_latency.py --logs "$LOG"
+python scripts/export_latency.py --logs "$LOG"
