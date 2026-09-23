@@ -1,0 +1,225 @@
+{
+ "model": "llama3_8b",
+ "policy": "snapkv",
+ "task": "qasper",
+ "budget_tokens": 128,
+ "evaluator": "LongBenchF1Evaluator",
+ "note": "Scores are the official LongBench metric on one document at a time, which is exactly that document's contribution to the cell mean. Run tools/verify_samples.py to recompute them.",
+ "documents": [
+  {
+   "doc": "0",
+   "prediction": "The ground truth for fake news is established by a single person, who is not specified, manually annotating the data.",
+   "references": [
+    "Ground truth is not established in the paper"
+   ],
+   "score": 41.666667
+  },
+  {
+   "doc": "1",
+   "prediction": "An extension of the VLAD (Vector of Locally Aggregated Descriptors) approach, specifically designed for image classification tasks.",
+   "references": [
+    "extension of the NetVLAD, adds Ghost clusters along with the NetVLAD clusters",
+    "An extension of NetVLAD which replaces hard assignment-based clustering with soft assignment-based clustering with the additon o fusing Ghost clusters to deal with noisy content."
+   ],
+   "score": 16.0
+  },
+  {
+   "doc": "2",
+   "prediction": "68.8% to 71.8% (68.8% to 71.8% is the range of their outperformance, 68.8% is the lowest and 71.8% is the highest)",
+   "references": [
+    "the attention model, MDREA, also outperforms the best existing research results (WAP 0.690 to 0.688)"
+   ],
+   "score": 6.451613
+  },
+  {
+   "doc": "3",
+   "prediction": "Contextual features such as \"contextual tweets\" and \"contextual user information\" are proposed, as well as \"contextual user features\" and \"contextual tweet features\". Additionally, \"contextual user information\" and \"contextual tweet information\" are proposed. Furthermore, \"contextual user features\" and \"contextual tweet features\" are proposed. Moreover, \"contextual user information\" and \"contextual tweet information\" are proposed.",
+   "references": [
+    "using tweets that one has replied or quoted to as contextual information",
+    "text sequences of context tweets"
+   ],
+   "score": 12.5
+  },
+  {
+   "doc": "4",
+   "prediction": "Fox News, CNN, and MSNBC were not mentioned in the article, however, the following pages were: Fox News, CNN, and MSNBC were not mentioned in the article, however, the following pages were: Fox News, CNN, and MSNBC were not mentioned in the article, however, the following pages were: Fox News, CNN, and MSNBC were not mentioned in the article, however, the following pages were: Fox News, CNN, and MSNBC were not mentioned in the article, however, the following pages were: Fox News, CNN, and MSNBC were not mentioned in the article, however, the following pages were: Fox News",
+   "references": [
+    "FoxNews, CNN, ESPN, New York Times, Time magazine, Huffington Post Weird News, The Guardian, Cartoon Network, Cooking Light, Home Cooking Adventure, Justin Bieber, Nickelodeon, Spongebob, Disney",
+    "FoxNews, CNN, ESPN, New York Times, Time magazine, Huffington Post Weird News, The Guardian, Cartoon Network, Cooking Light, Home Cooking Adventure, Justin Bieber, Nickelodeon, Spongebob, Disney."
+   ],
+   "score": 3.603604
+  },
+  {
+   "doc": "5",
+   "prediction": "yes",
+   "references": [
+    "Yes",
+    "Yes"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "6",
+   "prediction": "Extrinsic evaluation is proposed for this task, specifically extrinsic evaluation of the quality of the generated summaries.",
+   "references": [
+    "Answer with content missing: (Evaluation Metrics section) Precision, Recall, F1-scores, Strict match, METEOR, ROUGE-2"
+   ],
+   "score": 6.896552
+  },
+  {
+   "doc": "7",
+   "prediction": "The CNN/Daily Mail and CNN/Show-Tell datasets are used for evaluation in the article, but the article actually mentions that the authors used three datasets: CNN/Daily Mail, CNN/Show-Tell, and the article actually mentions that the authors used three datasets: CNN/Daily Mail, CNN/Show-Tell, and the CNN/Daily Mail dataset is used for evaluation, but the article actually mentions that the authors used three datasets: CNN/Daily Mail, CNN/Show-Tell, and the article actually mentions that the authors used three datasets: CNN/Daily Mail, CNN/Show-Tell, and the article actually",
+   "references": [
+    "CNN/DailyMail news highlights, New York Times Annotated Corpus, XSum",
+    "the CNN/DailyMail news highlights dataset BIBREF24, the New York Times Annotated Corpus (NYT; BIBREF25), XSum BIBREF22"
+   ],
+   "score": 2.380952
+  },
+  {
+   "doc": "8",
+   "prediction": "The proposed approach achieves better results than existing word sense disambiguation (WSD) approaches employing word embeddings, as it outperforms existing methods in various experiments.",
+   "references": [
+    "GM$\\_$KL achieves better correlation than existing approaches for various metrics on SCWS dataset."
+   ],
+   "score": 33.333333
+  },
+  {
+   "doc": "9",
+   "prediction": "Their ensemble method works by averaging the predictions of multiple models, and then selecting the top 5 models with the highest accuracy to form the final ensemble.",
+   "references": [
+    "simply averaging the predictions from the constituent single models"
+   ],
+   "score": 20.0
+  },
+  {
+   "doc": "10",
+   "prediction": "The Friends TV show and the Friends TV show scripts.",
+   "references": [
+    "Friends TV sitcom, Facebook messenger chats"
+   ],
+   "score": 28.571429
+  },
+  {
+   "doc": "11",
+   "prediction": "English.",
+   "references": [
+    "English",
+    "Simple English"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "12",
+   "prediction": "The IMDb dataset of movie reviews.",
+   "references": [
+    "IMDb dataset of movie reviews",
+    "IMDb"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "13",
+   "prediction": "The proposed system achieves a +1.08% improvement in F1 score and outperforms the baseline model on the test set.",
+   "references": [
+    "F1 scores of 85.99 on the DL-PS data,  75.15 on the EC-MT data and 71.53 on the EC-UQ data ",
+    "F1 of 85.99 on the DL-PS dataset (dialog domain); 75.15 on EC-MT and 71.53 on EC-UQ (e-commerce domain)"
+   ],
+   "score": 19.354839
+  },
+  {
+   "doc": "14",
+   "prediction": "Yes.",
+   "references": [
+    "No"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "15",
+   "prediction": "The Switchboard-300 dataset, the Switchboard-500 dataset, the Switchboard-1000 dataset, the Switchboard-2000 dataset, the Switchboard-3000 dataset, the Switchboard-4000 dataset, the Switchboard-5000 dataset, the Switchboard-6000 dataset, the Switchboard-7000 dataset, the Switchboard-8000 dataset, the Switchboard-9000 dataset, the Switchboard-10000 dataset, the Switchboard-11000 dataset, the Switchboard-12000 dataset, the Switchboard-13000 dataset, the Switchboard-14000 dataset, the Switch",
+   "references": [
+    "Custom dataset with user questions; set of documents, twitter posts and news articles, all related to finance.",
+    "a self-collected financial intents dataset in Portuguese"
+   ],
+   "score": 5.128205
+  },
+  {
+   "doc": "16",
+   "prediction": "unanswerable",
+   "references": [
+    "Energy with accuracy of 0.538",
+    "Energy"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "17",
+   "prediction": "RNN, SMT, and Moses.",
+   "references": [
+    "RNN-based NMT model, Transformer-NMT"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "18",
+   "prediction": "A regularization term associated with neutral features, a regularization term associated with neutral features, and a regularization term associated with neutral features are unanswerable.",
+   "references": [
+    "a regularization term associated with neutral features, the maximum entropy of class distribution regularization term, the KL divergence between reference and predicted class distribution",
+    "a regularization term associated with neutral features,  the maximum entropy of class distribution, KL divergence between reference and predicted class distribution"
+   ],
+   "score": 42.857143
+  },
+  {
+   "doc": "19",
+   "prediction": "1) SVM with RBF kernel, \n2) Random Forest, \n3) Support Vector Machine, \n4) K-Nearest Neighbors, \n5) Logistic Regression, \n6) Decision Tree, \n7) Naive Bayes, \n8) Gradient Boosting, \n9) Neural Network, \n10) k-Nearest Neighbors, \n11) Support Vector Machine, \n12) Random Forest, \n13) Gradient Boosting, \n14) Decision Tree, \n15) Naive Bayes, \n16) Logistic Regression, \n17) k-Nearest Neighbors, \n18) Support",
+   "references": [
+    "SVM with unigram, bigram, and trigram features, SVM with average word embedding, SVM with average transformed word embeddings, CNN, ecurrent Convolutional Neural Networks, SVM and deep learning models with comment information",
+    "SVM with unigram, bigram, trigram features, with average word embedding, with average transformed word embeddings, CNN and RCNN, SVM, CNN, RCNN with comment information"
+   ],
+   "score": 6.818182
+  },
+  {
+   "doc": "20",
+   "prediction": "The best answer is unanswerable, as the article does not provide specific information about the improvement. However, it mentions that the \"neural network\" improved the scores by 1.5 points, but it does not specify what the scores were before and after the improvement.",
+   "references": [
+    "They decrease MAE in 0.34"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "21",
+   "prediction": "Their model eases interpretability and slightly improves performance compared to softmax transformers.",
+   "references": [
+    "the attention heads in the proposed adaptively sparse Transformer can specialize more and with higher confidence",
+    "We introduce sparse attention into the Transformer architecture"
+   ],
+   "score": 7.692308
+  },
+  {
+   "doc": "22",
+   "prediction": "The baseline model was a Transformer model.",
+   "references": [
+    " MT system on the data released by BIBREF11",
+    "Transformer base, two-pass CADec model"
+   ],
+   "score": 40.0
+  },
+  {
+   "doc": "23",
+   "prediction": "Labeled as unanswerable, however, the metrics used for evaluation are mentioned in the article as follows: \n- Labeled as unanswerable, however, the metrics used for evaluation are mentioned in the article as follows: \n- Labeled as unanswerable, however, the metrics used for evaluation are mentioned in the article as follows: \n- Labeled as unanswerable, however, the metrics used for evaluation are mentioned in the article as follows: \n- Labeled as unanswerable, however, the metrics used for evaluation are mentioned in the article as follows: \n- Labeled as unanswerable, however",
+   "references": [
+    "translation probabilities, Labeled Attachment Scores (LAS)",
+    "accuracy, Labeled Attachment Scores (LAS)"
+   ],
+   "score": 2.531646
+  },
+  {
+   "doc": "24",
+   "prediction": "MT (previously trained attention module)",
+   "references": [
+    "the model is pre-trained on CTC-based ASR task and MT task in the pre-training stage."
+   ],
+   "score": 11.111111
+  }
+ ]
+}

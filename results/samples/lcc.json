@@ -1,0 +1,210 @@
+{
+ "model": "llama3_8b",
+ "policy": "snapkv",
+ "task": "lcc",
+ "budget_tokens": 128,
+ "evaluator": "LongBenchCodeSimEvaluator",
+ "note": "Scores are the official LongBench metric on one document at a time, which is exactly that document's contribution to the cell mean. Run tools/verify_samples.py to recompute them.",
+ "documents": [
+  {
+   "doc": "0",
+   "prediction": "\t\t\t\tParticipant p = (Participant) m_Participants[i];\n\t\t\t\tfor ( int j = 0; j < p.Players.Count; ++j )\n\t\t\t\t{\n\t\t\t\t\tNetState state = (NetState) p.Players[j];\n\t\t\t\t\tfor ( int k = 0; k < types.Length; ++k",
+   "references": [
+    "\t\t\t\tParticipant p = (Participant)m_Participants[i];"
+   ],
+   "score": 99.0
+  },
+  {
+   "doc": "1",
+   "prediction": "\t\t\tZ_.add_edge(e_u, e_v, **data.copy())\n\t\t\tA_, Y_, Z_ = self.contract_edge(graph, A, Y_, Z_, e_u, e_v, e_key)\n\t\t\tP = self.get_priority_queue(graph, A_, Y_, Z_)\n\t\t\tfor (u,v)",
+   "references": [
+    "\t\t\tZ_.add_edge(e_u, e_v, **data.copy())"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "2",
+   "prediction": "        ofilename = join(TEST_DATA_DIR, 'test.wav')\n        # Open the file in read/write mode\n        a = open(ofilename, 'r+b')\n        # Seek to the end of the file\n        a.seek(0, 2)\n        # Write some data\n        a.write(b'",
+   "references": [
+    "        rfd, fd, cfilename   = open_tmp_file('rwseektest.wav')"
+   ],
+   "score": 60.0
+  },
+  {
+   "doc": "3",
+   "prediction": "def get_language_status(self, language):\n    \"\"\"Return the status of a language.\"\"\"\n    # TODO: implement this method\n    pass\n```\nAnswer:\n```python\ndef get_language_status(self, language):\n    \"\"\"Return the status of a language.\"\"\"\n    # Get the language element\n    language_element = self",
+   "references": [
+    "            if e.text == language:"
+   ],
+   "score": 43.0
+  },
+  {
+   "doc": "4",
+   "prediction": "\t\t\t\t\tOLStyleValue styleValue = (OLStyleValue) value;\n\t\t\t\t\twriter.addAttribute(\"name\", styleValue.getName());\n\t\t\t\t\twriter.addAttribute(\"default\", styleValue.getDefaultValue());\n\t\t\t\t}\n\t\t\t}\n\t\t});\n\t}\n}\n}\n```\n\nThe final answer is: \n```java\nwriter.addAttribute(\"name",
+   "references": [
+    "\t\t\t\t\tOLStyleValue styleValue = (OLStyleValue) value;"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "5",
+   "prediction": "def get_question_data(self, question_id, category_id, question_type_id): \n\n```python\ndef get_question_data(self, question_id, category_id, question_type_id):\n    question_data = _QuestionData()\n    question_data.question = self.db.get_question(question_id)\n    question_data.category = self.db.get",
+   "references": [
+    "        longest = max(self.answers)"
+   ],
+   "score": 30.0
+  },
+  {
+   "doc": "6",
+   "prediction": "                case 2:\n                    mob.SendMessage(\"Target a location to mark:\");\n                    mob.Prompt = new SR_TargetPrompt(RuneAcc, mob.Location, mob.Map);\n                    Send(mob, SR_Utilities.FetchInfo(mob.Account));\n                    break;\n                case 3:\n                    mob.SendMessage(\"Enter a description:\");\n",
+   "references": [
+    "                    mob.Target = new SR_NewRuneTarget(RuneAcc);"
+   ],
+   "score": 44.0
+  },
+  {
+   "doc": "7",
+   "prediction": "            for (int i = 0; i < chain.length; i++) {\n                s.println(\"  \" + i + \": \" + chain[i].getSubjectDN());\n            }\n        }\n    }\n}\n```\nThe code snippet provided seems to be a part of a Java class that handles SSL/TLS certificates",
+   "references": [
+    "            for (int i = 0; i < chain.length; i++)"
+   ],
+   "score": 98.0
+  },
+  {
+   "doc": "8",
+   "prediction": "            sp = new JESpace (name, path);\n            spaceRegistrar.put (name, sp);\n        }\n        return sp;\n    }\n}\n```\nThe final answer is: \n```java\npublic synchronized static JESpace getSpace (String name, String path)\n{\n    JESpace sp = (",
+   "references": [
+    "            sp = new JESpace(name, path);"
+   ],
+   "score": 99.0
+  },
+  {
+   "doc": "9",
+   "prediction": "\t\t\t\t\tpos = btnEnergizeAll.bottom();\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n}\n```\nThe final answer is: \n```\n\t\t\t\t\tpos = btnEnergizeAll.bottom();\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n}\n``` \nThis code is a continuation of the previous",
+   "references": [
+    "\t\t\t\t\tpos = btnEnergizeAll.bottom();"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "10",
+   "prediction": "```python\nfrom wsgiref.simple_server import make_server\nfrom soaplib.core.server import wsgi\nfrom soaplib.core.service import soap\nfrom soaplib.core.model.primitive import String\nfrom soaplib.core.model.primitive import Integer\nfrom soaplib.core.model.primitive import Boolean\nfrom soaplib",
+   "references": [
+    "        length = int(environ['CONTENT_LENGTH'])"
+   ],
+   "score": 20.0
+  },
+  {
+   "doc": "11",
+   "prediction": "def mark_status_as_repeated(self, status_id): \n    mark = \"setRepeated('%s')\" % status_id\n    self.webview.execute_javascript(mark) \n    self.locked = True\n    self.locked = False\n    self.locked = True\n    self.locked = False\n   ",
+   "references": [
+    "        mark = \"setRepeated('%s');\" % status_id"
+   ],
+   "score": 56.0
+  },
+  {
+   "doc": "12",
+   "prediction": "            return {\"status\": \"success\", \"message\": \"Archive created successfully\"}\n        except Exception as e:\n            return {\"status\": \"error\", \"message\": str(e)}\n    def get_archive(self, archive_id):\n        # code to get archive\n        return {\"status\": \"success\", \"message\": \"",
+   "references": [
+    "            return {\"error\": False}"
+   ],
+   "score": 49.0
+  },
+  {
+   "doc": "13",
+   "prediction": "\t\t\tZoneIdentityPermission c = (ZoneIdentityPermission) a.Union (b);\n\t\t\tAssert.AreEqual (SecurityZone.Internet, c.SecurityZone);\n\t\t\tAssert.AreEqual (true, c.IncludeAllDescendants);\n\t\t}\n\t}\n} \n// This is the end of the code snippet. \n// The code",
+   "references": [
+    "\t\t\tIPermission result = a.Union (b);"
+   ],
+   "score": 58.0
+  },
+  {
+   "doc": "14",
+   "prediction": "def getAcceptedIssuers(self):\n```\n\nThe final answer is: \n```\ndef getAcceptedIssuers(self):\n    return [issuer for trust_manager in self.trust_managers for issuer in trust_manager.getAcceptedIssuers()]\n```\n\n\n\nExplanation: This function is used to get the list of accepted issuers from",
+   "references": [
+    "        certs = []"
+   ],
+   "score": 21.0
+  },
+  {
+   "doc": "15",
+   "prediction": "        DomainInfo info = manager.getDomainInfo(domain);\n        request.setAttribute(\"domainInfo\", info);\n    }\n} \npackage com.abc.mailservice;\n\nimport java.util.Map;\n\nimport javax.servlet.http.HttpServletRequest;\nimport javax.servlet.http.HttpServletResponse;\n\nimport org.apache.struts.action.ActionForm;\nimport org.apache.struts.action.ActionForward",
+   "references": [
+    "        User user = getUser(request);"
+   ],
+   "score": 41.0
+  },
+  {
+   "doc": "16",
+   "prediction": "            self.__datastream_address = os.path.join(self.__tmpdir, 'datastream')\n            self.__datastream_fd = os.open(self.__datastream_address, os.O_RDWR | os.O_CREAT, 0o600)\n            self.__datastream_transport, self.__datastream_protocol = await asyncio.start_server",
+   "references": [
+    "            self.__tmp_dir, 'datastream.%s.pipe' % uuid.uuid4().hex)"
+   ],
+   "score": 55.0
+  },
+  {
+   "doc": "17",
+   "prediction": "\t\t\t\tif (option1) {\n\t\t\t\t\tjumpID = (int)iter[\"jumpID\"];\n\t\t\t\t\t//update database\n\t\t\t\t\t//...\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\t//...\n\t}\n} \n```\nThe final answer is: \n```csharp\njumpID = (int",
+   "references": [
+    "\t\t\t\tif(! option1) {"
+   ],
+   "score": 92.0
+  },
+  {
+   "doc": "18",
+   "prediction": "        String[] argValues = new String[args.length];\n        for (int i = 0; i < args.length; i++) {\n            if (args[i]!= null) {\n                if (args[i].isResourceBundleKey()) {\n                    argValues[i] = args[i].getValue();\n                } else",
+   "references": [
+    "        if ((args == null) || (args.length == 0)) {"
+   ],
+   "score": 58.0
+  },
+  {
+   "doc": "19",
+   "prediction": "\t\t\t\tfirms = loadFromFile();\n\t\t\t}\n\t\t}), TIMEDATA(new TimedataFileLoader())\n\t\t{\n\t\t\t@Override\n\t\t\tpublic void loadToData()\n\t\t\t{\n\t\t\t\ttimedata = loadFromFile();\n\t\t\t}\n\t\t};\n\t}\n}\n```\nThe code is a part",
+   "references": [
+    "\t\t\t\tfirms = loadFromFile();"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "20",
+   "prediction": "\t\tPreferencePage generalPage = new FieldEditorPreferencePage(GeneralPreferencePage.class);\n\n\t\t// Create the workbench preference node\n\t\tPreferenceNode workbenchNode = new PreferenceNode(\"workbenchPreferences\");\n\t\tPreferencePage workbenchPage = new FieldEditorPreferencePage(WorkbenchPreferencePage.class);\n\n",
+   "references": [
+    "\t\tPreferencePage generalPage = new FieldEditorPreferencePage() {"
+   ],
+   "score": 81.0
+  },
+  {
+   "doc": "21",
+   "prediction": "            }\n        }\n    }\n}\n```\nThe final answer is: \n```\n            }\n        }\n    }\n}\n``` \nThis code is a continuation of the previous code snippet. It seems to be a part of a spellcasting system in a game, where the player is selecting a target for a spell. The",
+   "references": [
+    "                if (m_Owner.SpellTarget == null)"
+   ],
+   "score": 39.0
+  },
+  {
+   "doc": "22",
+   "prediction": "        for state in states: \n            if state.is_in_transaction():\n                self._flushing = True\n                self._flushing = False\n                self._flushing = True\n                self._flushing = False\n                self._flushing = True\n                self._flushing = False\n                self",
+   "references": [
+    "        for state, dict_ in states.items():"
+   ],
+   "score": 78.0
+  },
+  {
+   "doc": "23",
+   "prediction": "\t\tfor (IField field : fields) {\n\t\t\tString name = field.getName();\n\t\t\tif (name.length() > 3 && name.startsWith(\"get\") && name.endsWith(\"()\")) {\n\t\t\t\tname = name.substring(3, name.length() - 2);\n\t\t\t}\n\t\t\tif (name.length() >",
+   "references": [
+    "\t\tfor(IField field : fields) { "
+   ],
+   "score": 97.0
+  },
+  {
+   "doc": "24",
+   "prediction": "class _UIModule(object): \n    def render(self, template_name, **kwargs): \n        return self.template.render(template_name, **kwargs) \n    def render_string(self, template_string, **kwargs): \n        return self.template.render_string(template_string, **kwargs) \n    def render_bundle(self,",
+   "references": [
+    "    like ``r'/foo/?'`` in conjunction with using the decorator."
+   ],
+   "score": 18.0
+  }
+ ]
+}

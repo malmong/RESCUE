@@ -25,7 +25,8 @@ inference/       generate from one prompt under any policy
 evaluation/      run a LongBench cell under OpenCompass
 train/           cache features, then fit one scorer per (model, base policy)
 tools/           turn evaluation output into results/*.csv
-results/         trained scorers, and every score the paper reports
+results/         trained scorers, every score the paper reports, and
+                 prediction samples for checking the metrics
 tables/          make_table_<n>.py, numbered as the paper numbers them
 figures/         plot_figure_<n>.py, likewise
 scripts/         the exact commands behind each experiment
@@ -61,6 +62,14 @@ reports as prose rather than as a numbered table.
 
 `--format latex` emits the table as it appears in the paper; `--out PATH`
 writes to a file instead of stdout. Figures land in `figures/out/`.
+
+`results/scores.csv` is a set of numbers, and numbers in a file can be
+anything. `results/samples/` carries the text underneath a few of them -- the
+model's actual generations, their references, and the score each document
+received, one sample per LongBench metric family. `python
+tools/verify_samples.py` recomputes those scores with the official metric and
+reports whether they come back. That step needs OpenCompass; everything above
+it does not.
 
 ## Running the method
 

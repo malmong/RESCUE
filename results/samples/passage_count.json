@@ -1,0 +1,210 @@
+{
+ "model": "llama3_8b",
+ "policy": "snapkv",
+ "task": "passage_count",
+ "budget_tokens": 128,
+ "evaluator": "LongBenchCountEvaluator",
+ "note": "Scores are the official LongBench metric on one document at a time, which is exactly that document's contribution to the cell mean. Run tools/verify_samples.py to recompute them.",
+ "documents": [
+  {
+   "doc": "0",
+   "prediction": "8",
+   "references": [
+    "8"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "1",
+   "prediction": "15",
+   "references": [
+    "11"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "2",
+   "prediction": "9",
+   "references": [
+    "13"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "3",
+   "prediction": "25",
+   "references": [
+    "44"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "4",
+   "prediction": "2",
+   "references": [
+    "2"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "5",
+   "prediction": "6",
+   "references": [
+    "7"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "6",
+   "prediction": "6",
+   "references": [
+    "7"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "7",
+   "prediction": "24",
+   "references": [
+    "45"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "8",
+   "prediction": "8",
+   "references": [
+    "4"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "9",
+   "prediction": "16",
+   "references": [
+    "31"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "10",
+   "prediction": "6",
+   "references": [
+    "4"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "11",
+   "prediction": "15",
+   "references": [
+    "16"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "12",
+   "prediction": "5",
+   "references": [
+    "5"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "13",
+   "prediction": "34",
+   "references": [
+    "44"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "14",
+   "prediction": "24",
+   "references": [
+    "19"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "15",
+   "prediction": "24",
+   "references": [
+    "36"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "16",
+   "prediction": "14",
+   "references": [
+    "24"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "17",
+   "prediction": "15",
+   "references": [
+    "12"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "18",
+   "prediction": "6",
+   "references": [
+    "23"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "19",
+   "prediction": "6",
+   "references": [
+    "14"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "20",
+   "prediction": "24",
+   "references": [
+    "18"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "21",
+   "prediction": "24",
+   "references": [
+    "29"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "22",
+   "prediction": "15",
+   "references": [
+    "22"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "23",
+   "prediction": "5",
+   "references": [
+    "6"
+   ],
+   "score": 0.0
+  },
+  {
+   "doc": "24",
+   "prediction": "14",
+   "references": [
+    "8"
+   ],
+   "score": 0.0
+  }
+ ]
+}

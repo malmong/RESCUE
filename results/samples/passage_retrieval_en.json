@@ -1,0 +1,210 @@
+{
+ "model": "llama3_8b",
+ "policy": "snapkv",
+ "task": "passage_retrieval_en",
+ "budget_tokens": 128,
+ "evaluator": "LongBenchRetrievalEvaluator",
+ "note": "Scores are the official LongBench metric on one document at a time, which is exactly that document's contribution to the cell mean. Run tools/verify_samples.py to recompute them.",
+ "documents": [
+  {
+   "doc": "0",
+   "prediction": "Paragraph 15",
+   "references": [
+    "Paragraph 15"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "1",
+   "prediction": "Paragraph 8",
+   "references": [
+    "Paragraph 8"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "2",
+   "prediction": "Paragraph 18",
+   "references": [
+    "Paragraph 18"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "3",
+   "prediction": "Paragraph 17",
+   "references": [
+    "Paragraph 17"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "4",
+   "prediction": "Paragraph 14",
+   "references": [
+    "Paragraph 14"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "5",
+   "prediction": "Paragraph 3",
+   "references": [
+    "Paragraph 3"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "6",
+   "prediction": "Paragraph 24",
+   "references": [
+    "Paragraph 24"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "7",
+   "prediction": "Paragraph 27",
+   "references": [
+    "Paragraph 27"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "8",
+   "prediction": "Paragraph 30",
+   "references": [
+    "Paragraph 30"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "9",
+   "prediction": "Paragraph 12",
+   "references": [
+    "Paragraph 12"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "10",
+   "prediction": "Paragraph 22",
+   "references": [
+    "Paragraph 22"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "11",
+   "prediction": "Paragraph 30",
+   "references": [
+    "Paragraph 30"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "12",
+   "prediction": "Paragraph 24",
+   "references": [
+    "Paragraph 24"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "13",
+   "prediction": "Paragraph 19",
+   "references": [
+    "Paragraph 19"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "14",
+   "prediction": "Paragraph 3",
+   "references": [
+    "Paragraph 3"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "15",
+   "prediction": "Paragraph 8",
+   "references": [
+    "Paragraph 8"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "16",
+   "prediction": "Paragraph 3",
+   "references": [
+    "Paragraph 3"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "17",
+   "prediction": "Paragraph 17",
+   "references": [
+    "Paragraph 17"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "18",
+   "prediction": "Paragraph 4",
+   "references": [
+    "Paragraph 4"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "19",
+   "prediction": "Paragraph 3",
+   "references": [
+    "Paragraph 3"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "20",
+   "prediction": "Paragraph 24",
+   "references": [
+    "Paragraph 24"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "21",
+   "prediction": "Paragraph 2",
+   "references": [
+    "Paragraph 2"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "22",
+   "prediction": "Paragraph 6",
+   "references": [
+    "Paragraph 6"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "23",
+   "prediction": "Paragraph 12",
+   "references": [
+    "Paragraph 12"
+   ],
+   "score": 100.0
+  },
+  {
+   "doc": "24",
+   "prediction": "Paragraph 24",
+   "references": [
+    "Paragraph 24"
+   ],
+   "score": 100.0
+  }
+ ]
+}
