@@ -20,10 +20,10 @@ import csv
 import statistics as st
 from pathlib import Path
 
-from common import BLUE, GREY, ORANGE, REPO_ROOT, save
+from style import BLUE, GREY, ORANGE, REPO_ROOT, save
 import matplotlib.pyplot as plt
 
-from common_tables import BASE_LABEL, Scores  # noqa: E402
+from common import BASE_LABEL, Scores  # noqa: E402
 
 PER_DOC = REPO_ROOT / "results" / "per_document.csv"
 MARKERS = {"snapkv": "o", "laprox": "s", "h2o": "^", "lava": "D", "rkv": "v"}

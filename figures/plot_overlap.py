@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from common import REPO_ROOT, save
+from style import REPO_ROOT, save
 import matplotlib.pyplot as plt
 
 DATA = REPO_ROOT / "results" / "measurements" / "coverage_by_budget.csv"

@@ -39,7 +39,7 @@ BASES = ("snapkv", "laprox", "h2o", "lava", "rkv")
 #   rescue_ungated    the same correction applied to every document
 #   fullfuture        policy-agnostic full-future target, applied unconditionally
 #   fullfuture_gated  the same target under the selector
-#   oracle_selector   per document, whichever cache scored better in hindsight
+#   oracle_future     the correction driven by real future attention (a ceiling)
 #   dense             no eviction
 #   lookaheadkv / foresightkv   future-aware comparators
 #   cache_select      the selector choosing between SnapKV's and ForesightKV's caches
@@ -88,7 +88,11 @@ for _b in BASES:
 _add("dense16", "llama3_8b", "dense", None, 0)
 _add("p128_lookahead", "llama3_8b", "lookaheadkv", None, 128)
 _add("p128_foresight64", "llama3_8b", "foresightkv", None, 128)
-_add("orc50", "llama3_8b", "oracle_selector", "snapkv", 128)
+# orc50 runs the correction against REAL future attention taken from an
+# un-evicted reference generation: a ceiling on the future SIGNAL, not on the
+# per-document decision. The selector oracle is a different quantity and comes
+# from results/per_document.csv.
+_add("orc50", "llama3_8b", "oracle_future", "snapkv", 128)
 _add("cachesel", "llama3_8b", "cache_select", "snapkv", 128)
 
 # ---- Mistral-7B-Instruct-v0.3 ---------------------------------------------

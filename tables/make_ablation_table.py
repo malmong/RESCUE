@@ -22,7 +22,13 @@ import argparse
 import statistics as st
 from pathlib import Path
 
-from common import (LATEX_FOOTER, Scores, bootstrap_ci, latex_header, write)
+import csv
+from collections import defaultdict
+
+from common import (LATEX_FOOTER, REPO_ROOT, Scores, bootstrap_ci, latex_header,
+                    write)
+
+PER_DOC = REPO_ROOT / "results" / "per_document.csv"
 
 ARMS = [
     ("base", "Base", False),
@@ -39,11 +45,35 @@ GROUPS = {
 }
 
 
+def oracle_cells(model: str) -> list[tuple[str, str, float, float]]:
+    """The ceiling on any per-document rule of this form.
+
+    Not an eviction run: for each document, take whichever of the two caches
+    scored better once the answer was known, then average over documents and
+    tasks exactly as every other row does. It needs per-document scores, which
+    a cell average cannot supply.
+    """
+    if not PER_DOC.exists():
+        return []
+    acc: dict[tuple[str, str], dict[str, list[float]]] = defaultdict(
+        lambda: {"base": [], "orc": []})
+    with open(PER_DOC, encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            if r["model"] != model:
+                continue
+            b, c = float(r["score_base"]), float(r["score_corr"])
+            acc[(r["base"], r["task"])]["base"].append(b)
+            acc[(r["base"], r["task"])]["orc"].append(max(b, c))
+    return [(base, task, st.mean(v["base"]), st.mean(v["orc"]))
+            for (base, task), v in acc.items()]
+
+
 def rows(sc: Scores, model: str) -> list[tuple[str, str, float | None, float | None,
                                                float | None, int, int]]:
     out = []
     for arm, label, is_delta in ARMS:
-        cells = sc.cells(model, "base", arm)
+        cells = (oracle_cells(model) if arm == "oracle_selector"
+                 else sc.cells(model, "base", arm))
         if not cells:
             out.append((arm, label, None, None, None, 0, 0))
             continue
