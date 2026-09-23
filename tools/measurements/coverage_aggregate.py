@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python
 """Phase C: combine phase_a (GT + 5 observed + ForesightKV) and phase_b
 (LookaheadKV) per-document score dumps into the coverage table:

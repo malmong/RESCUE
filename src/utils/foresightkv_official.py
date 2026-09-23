@@ -1,16 +1,39 @@
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import torch
 
-_FORESIGHTKV_EVAL_ROOT = Path("/home/byungjun/kv_cache/reference/official/ForesightKV/evaluation")
-if str(_FORESIGHTKV_EVAL_ROOT) not in sys.path:
-    sys.path.insert(0, str(_FORESIGHTKV_EVAL_ROOT))
+# ForesightKV is a third-party checkout we cannot redistribute. Point
+# RESCUE_FORESIGHTKV_ROOT at a clone of the authors' release; only
+# --method foresightkv needs it.
+_FORESIGHTKV_EVAL_ROOT = Path(
+    os.environ.get("RESCUE_FORESIGHTKV_ROOT",
+                   Path(__file__).resolve().parents[2] / "third_party" / "ForesightKV")
+) / "evaluation"
 
-from rkv.modeling import SelectionModel  # noqa: E402
+
+def _selection_model():
+    """Import the authors' SelectionModel lazily.
+
+    Importing at module scope would make every policy -- including the ones
+    that need nothing third-party -- fail on a checkout without ForesightKV,
+    because this module is imported by the generator unconditionally.
+    """
+    if str(_FORESIGHTKV_EVAL_ROOT) not in sys.path:
+        sys.path.insert(0, str(_FORESIGHTKV_EVAL_ROOT))
+    try:
+        from rkv.modeling import SelectionModel
+    except ImportError as exc:
+        raise SystemExit(
+            f"ForesightKV not found at {_FORESIGHTKV_EVAL_ROOT.parent}: {exc}\n"
+            "Clone the authors' repository there or set RESCUE_FORESIGHTKV_ROOT. "
+            "Only --method foresightkv needs it."
+        ) from exc
+    return SelectionModel
 
 
 class ForesightKVJudgeScorer:
@@ -55,7 +78,7 @@ class ForesightKVJudgeScorer:
         )
         self.judge_models: list[SelectionModel] = []
         for state_dict in payload["judge_models"]:
-            jm = SelectionModel(cfg)
+            jm = _selection_model()(cfg)
             jm.load_state_dict(state_dict)
             jm.float().eval().to(self.device)
             for p in jm.parameters():

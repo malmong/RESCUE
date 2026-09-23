@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python
 """Phase A: unpatched Llama-3.1-8B-Instruct, computes GT oracle + 5 observed
 (H2O/SnapKV/LaProx/LAVa/R-KV) + ForesightKV candidate-token importance scores
@@ -16,19 +17,22 @@ import traceback
 from pathlib import Path
 
 import torch
+
+import src.models.registry as _registry
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 sys.path.insert(0, "/tmp/claude-1001/-home-byungjun-kv-cache/3b6b1de3-4fe2-4802-ba8a-70577e2afe93/scratchpad")
 from coverage_lib import compute_doc_scores  # noqa: E402
 from kvbench.learned.foresightkv_paper import ForesightKVJudgeScorer  # noqa: E402
 
-MODEL_PATH = "/data1/KV_cache_eviction/model/Meta-Llama-3.1-8B-Instruct"
-FORESIGHTKV_CKPT = "/home/byungjun/kv_cache/runs/learned_baselines/foresight_paper/llama_rl_fixed/final/judge_models.pt"
+MODEL_PATH = str(_registry.load("llama3_8b").path)
+# ForesightKV's own judge, trained by its authors; set the path to your copy.
+FORESIGHTKV_CKPT = os.environ.get("RESCUE_FORESIGHTKV_CKPT", "")
 TASK_DATA_PATHS = {
-    "qasper": "/data1/KV_cache_eviction/dataset/LongBench/data/qasper.jsonl",
-    "hotpotqa": "/data1/KV_cache_eviction/dataset/LongBench/data/hotpotqa.jsonl",
-    "gov_report": "/data1/KV_cache_eviction/dataset/LongBench/data/gov_report.jsonl",
-    "multifieldqa_en": "/data1/KV_cache_eviction/dataset/LongBench/data/multifieldqa_en.jsonl",
+    "qasper": str(_registry.data_root() / "LongBench" / "data" / "qasper.jsonl"),
+    "hotpotqa": str(_registry.data_root() / "LongBench" / "data" / "hotpotqa.jsonl"),
+    "gov_report": str(_registry.data_root() / "LongBench" / "data" / "gov_report.jsonl"),
+    "multifieldqa_en": str(_registry.data_root() / "LongBench" / "data" / "multifieldqa_en.jsonl"),
 }
 SCRATCH = Path("/tmp/claude-1001/-home-byungjun-kv-cache/3b6b1de3-4fe2-4802-ba8a-70577e2afe93/scratchpad")
 MAX_SEQ_LEN = 131072

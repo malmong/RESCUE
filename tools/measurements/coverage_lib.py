@@ -1,3 +1,5 @@
+from pathlib import Path
+import os
 """Shared building blocks for the GT-vs-Observed-vs-Future coverage measurement
 (paper Figure motivation, panel (b)). See coverage_phase_a.py / coverage_phase_b_lookaheadkv.py
 / coverage_aggregate.py for the actual pipeline.
@@ -26,7 +28,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as F
 
-sys.path.insert(0, "/home/byungjun/kv_cache")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from kvbench.baselines.scoring import (  # noqa: E402
     BaselineConfig,

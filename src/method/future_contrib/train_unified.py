@@ -69,7 +69,7 @@ def main() -> None:
     p.add_argument("--objective", required=True, choices=["A", "B", "C", "D", "G", "H", "S", "R"])
     p.add_argument("--model_type", choices=["llama", "mistral", "qwen3"], required=True)
     p.add_argument("--model_path", required=True)
-    p.add_argument("--trace_root", default="/data1/KV_cache_eviction/trace_chat")
+    p.add_argument("--trace_root", default=os.environ.get("RESCUE_TRACE_ROOT", "assets/trace"))
     p.add_argument("--trace_model_id", default=None)
     p.add_argument("--trace_pattern", default="by_source_*")
     p.add_argument("--max_length", type=int, default=4096)
