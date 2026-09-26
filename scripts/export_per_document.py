@@ -89,6 +89,11 @@ SEL_STEM = {
     "h2o": f"{P}{RFC}recenth2o-scale_additive-fidelity0_1p1-fidp1_h2o",
 }
 # Cells re-run under their own name after a fix; same flags, same checkpoint.
+# h2o/narrativeqa has no complete gate-logged run: llfloor_h2o was launched
+# without RESCUE_GATE_LOG, and the partial logs that survive come from other
+# arms. Its kl_margin column is therefore empty -- 62 of 18,750 rows -- rather
+# than filled from a run that is not the one the scores come from. Every other
+# cell's margins are read from the run named here.
 ALT = {("rkv", "narrativeqa"): f"{P}{RFC}recentrkv-scale_additive-fidelity0_1p1-p128_nq_rkv_fid",
        ("h2o", "narrativeqa"): f"{P}{RFC}recenth2o-scale_additive-fidelity0_1p1-p128_nq_h2o_fid"}
 # The selector SCORES come from the llfloor re-run, which is the protocol the
