@@ -3,7 +3,7 @@
 # Coverage is the share of the oracle future-attention top-B set retained;
 # delta_coverage is the corrected cache's coverage minus the base cache's.
 # rescue_recall is the share of K_GT \ K_base that the correction brings back.
-# Measured by tools/measurements/coverage.py; the downstream column is read from
+# Measured by scripts/measurements/coverage.py; the downstream column is read from
 # results/scores.csv, not stored here.
 base,delta_coverage_pt,rescue_recall_pct
 h2o,25.7,46.3

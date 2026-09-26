@@ -66,6 +66,29 @@ def text(sc: Scores, model: str) -> str:
                  f"        RESCUE {sum(1 for x in dr if x > 0)}/{sum(1 for x in dr if x < 0)}")
     lines.append(f"  per-task hindsight oracle over the two policies {st.mean(do):+.2f}"
                  f"  -- CacheSel chooses per document and reaches {st.mean(dc):+.2f}")
+
+    # The other control of Appendix N.1: the probe token's own attention row
+    # added to SnapKV's vote, with no scorer. Printed here because it is the
+    # stronger of the two and belongs next to the one it is compared against.
+    base = {t: b for t, b, *_ in rs}
+    probe = []
+    for w in (1, 8, 32):
+        got = {t: sc.get(model, f"probe_attn_w{w}", "snapkv", 128, t) for t in base}
+        if any(v is None for v in got.values()):
+            continue
+        d = [got[t] - base[t] for t in base]
+        no_trec = [got[t] - base[t] for t in base if t != "trec"]
+        probe.append((w, st.mean(d), st.mean(no_trec)))
+    if probe:
+        lines.append("")
+        lines.append("  probe-attention control (no scorer), by probe weight:")
+        for w, m, nt in probe:
+            lines.append(f"    weight {w:<3} mean delta vs SnapKV {m:+.2f}"
+                         f"   excluding TREC {nt:+.2f}")
+        rescue_no_trec = st.mean([r - b for t, b, _f, _c, r in rs if t != "trec"])
+        lines.append(f"    RESCUE for comparison {st.mean(dr):+.2f}"
+                     f"   excluding TREC {rescue_no_trec:+.2f}")
+        lines.append("    weights 8 and 32 are chosen on the evaluation set; unit weight is untuned")
     return "\n".join(lines)
 
 

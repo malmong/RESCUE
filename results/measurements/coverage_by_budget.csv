@@ -1,5 +1,5 @@
 # Share of the oracle future-attention top-B entries, by which signal retains it.
-# Measured on Llama-3.1-8B-Instruct; see tools/measurements/coverage.py.
+# Measured on Llama-3.1-8B-Instruct; see scripts/measurements/coverage.py.
 budget,shared,observed_only,future_only,missed
 128,21.7,7.1,32.6,38.6
 256,23.6,11.8,21.8,42.8

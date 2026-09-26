@@ -107,7 +107,12 @@ plt.rcParams.update({"font.family": "serif",
                      "font.size": 15, "axes.linewidth": 1.0,
                      "mathtext.fontset": "cm"})
 
-COL={"SnapKV":"#9ecae1","LaProx":"#4292c6","LAVa":"#2171b5","R-KV":"#08306b","H2O":"#e08214"}
+# Keyed by the policy key, not by its printed label, so a change to how the
+# label reads (H2O carries an "(evict-once)" qualifier in the tables) does not
+# silently drop a series here.
+_COL_BY_KEY = {"snapkv": "#9ecae1", "laprox": "#4292c6", "lava": "#2171b5",
+               "rkv": "#08306b", "h2o": "#e08214"}
+COL = {BASE_LABEL[k]: v for k, v in _COL_BY_KEY.items()}
 
 fig,(ax,axR)=plt.subplots(1,2,figsize=(11.6,5.54),gridspec_kw={"width_ratios":[1,0.96]})
 lim_lo,lim_hi=-10.4,13.2
@@ -200,7 +205,7 @@ for r,b in enumerate(order):
 axR.set_xlim(-3.9, 6.2); axR.set_ylim(-3.95, 2.75)
 axR.set_xticks([-2, 0, 2, 4])
 axR.set_xlabel("Points gained over the base policy, per document", fontsize=13.5)
-axR.set_title("Why $55.7\\%$ accuracy is enough", pad=10, fontsize=17,
+axR.set_title(f"Why ${100 * Q['accuracy']:.1f}\\%$ accuracy is enough", pad=10, fontsize=17,
               fontweight="bold", color="#1b2836")
 for sp in ("top", "right", "left"): axR.spines[sp].set_visible(False)
 axR.grid(axis="x", alpha=.22, lw=.7); axR.set_axisbelow(True)

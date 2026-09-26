@@ -310,8 +310,13 @@ def main():
     (CKPT_DIR / f"{stem}_summary.json").write_text(json.dumps(
         {"set": args.set, "base": args.base, "target": args.target, "corpora": corpora, "n_train": len(train_paths),
          "n_val": len(val_paths), "best_epoch": best, "history": history}, indent=2))
-    print(f"[{time.ctime()}] saved {out}  (best val {best['val_loss']:.4f} @ epoch {best['epoch']+1})",
-          flush=True)
+    # The saved weights are the final epoch's, not the best-validation ones --
+    # the held-out split monitors convergence and never selects the checkpoint,
+    # which is what the paper reports. The best epoch is printed for information
+    # only, so say so rather than leave the line reading like a restore.
+    print(f"[{time.ctime()}] saved {out}  (final epoch {len(history)}; "
+          f"val loss was lowest at epoch {best['epoch']+1}, {best['val_loss']:.4f}, "
+          f"not used for selection)", flush=True)
 
 
 if __name__ == "__main__":

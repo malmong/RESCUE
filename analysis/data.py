@@ -20,7 +20,7 @@ from rescue.models import LONGBENCH_TASKS  # noqa: E402
 SCORES = REPO_ROOT / "results" / "scores.csv"
 
 BASES = ("snapkv", "laprox", "h2o", "lava", "rkv")
-BASE_LABEL = {"snapkv": "SnapKV", "laprox": "LaProx", "h2o": "H2O",
+BASE_LABEL = {"snapkv": "SnapKV", "laprox": "LaProx", "h2o": "H2O (evict-once)",
               "lava": "LAVa", "rkv": "R-KV"}
 TASK_LABEL = {
     "narrativeqa": "NarrativeQA", "qasper": "Qasper",

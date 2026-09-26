@@ -26,8 +26,17 @@ run() {  # run <tag> <extra args...>
 }
 
 run snapkv      --method snapkv
-run foresightkv --method foresightkv
 run dense       --method dense
+
+# ForesightKV needs its authors' judge model, which is not vendored here, so
+# this arm runs only if you have fetched it. Table 14's ForesightKV row comes
+# from it; everything else in the table does not.
+FORESIGHT_CKPT="${FORESIGHT_CKPT:-results/checkpoints/foresightkv_judge_models.pt}"
+if [ -f "$FORESIGHT_CKPT" ]; then
+  run foresightkv --method foresightkv --checkpoint "$FORESIGHT_CKPT"
+else
+  echo "no ForesightKV judge model at $FORESIGHT_CKPT, skipping that arm" >&2
+fi
 for p in 1 2 4 8; do
   run "rescue_p$p" --method rescue --base snapkv \
       --checkpoint "results/checkpoints/rescue_${MODEL}_snapkv.pt" --probe-len "$p"

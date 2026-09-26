@@ -18,6 +18,11 @@ from pathlib import Path
 
 from data import BASE_LABEL, LATEX_FOOTER, Scores, TASK_LABEL, latex_header, write
 
+# This table is eight columns wide and its label column is a \multirow stub, so
+# it uses the short policy names. Table 23 sits directly above it and carries
+# the "(evict-once)" qualifier for the same rows.
+SHORT = dict(BASE_LABEL, h2o="H2O")
+
 BASES = ("h2o", "rkv")
 TASKS = ("qasper", "trec", "lcc")
 SEEDS = [(0, "rescue"), (1, "seed1"), (2, "seed2")]
@@ -53,7 +58,7 @@ def text(sc: Scores, model: str) -> str:
                 for s, _a in SEEDS)
             tail = (f" {sd:7.2f} {rng:7.2f}" if i == 0 and sd is not None
                     else " " * 16)
-            lines.append(f"  {BASE_LABEL[b] if i == 0 else '':8s} {TASK_LABEL[t]:10s}{cells}{tail}")
+            lines.append(f"  {SHORT[b] if i == 0 else '':8s} {TASK_LABEL[t]:10s}{cells}{tail}")
     return "\n".join(lines)
 
 
@@ -76,7 +81,7 @@ def latex(sc: Scores, model: str) -> str:
                 tail = (f" & & \\multirow{{{len(TASKS)}}}{{*}}{{${sd:.2f}$}} & "
                         f"\\multirow{{{len(TASKS)}}}{{*}}{{${rng:.2f}$}}"
                         if sd is not None else " & & &")
-                out.append(f"{BASE_LABEL[b]} & {TASK_LABEL[t]} & {cells}{tail} \\\\")
+                out.append(f"{SHORT[b]} & {TASK_LABEL[t]} & {cells}{tail} \\\\")
             else:
                 out.append(f"     & {TASK_LABEL[t]} & {cells} & & & \\\\")
     out.append(LATEX_FOOTER)

@@ -4,7 +4,7 @@
  "task": "gov_report",
  "budget_tokens": 128,
  "evaluator": "LongBenchRougeEvaluator",
- "note": "Scores are the official LongBench metric on one document at a time, which is exactly that document's contribution to the cell mean. Run tools/verify_samples.py to recompute them.",
+ "note": "Scores are the official LongBench metric on one document at a time, which is exactly that document's contribution to the cell mean. Run scripts/verify_samples.py to recompute them.",
  "documents": [
   {
    "doc": "0",

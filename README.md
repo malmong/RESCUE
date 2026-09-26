@@ -138,6 +138,24 @@ python scripts/train.py --model llama3_8b --base snapkv
 A scorer is specific to a (model, base policy, budget) triple, because its
 target is that policy's own misses at that budget.
 
+### 5. The training-free probe control
+
+Appendix N.1 reports what the probe token's attention row alone buys, with no
+scorer and no second cache. Two environment variables turn it on: the number of
+probe rows fed into the base policy's vote, and the weight they carry against a
+32-row observation window.
+
+```bash
+RESCUE_PROBE_SNAPKV=1 RESCUE_PROBE_WEIGHT=1 \
+python scripts/evaluate.py --model llama3_8b --method snapkv --task all --gpu 0
+```
+
+Unit weight is what the paper reports (+1.95 on the 16-task mean, against
+RESCUE's +1.71). Weights 8 and 32 reach +3.14 and +3.54, but they are chosen on
+the evaluation set itself; all three are in `results/scores.csv` under the arms
+`probe_attn_w1`, `probe_attn_w8` and `probe_attn_w32`, and
+`python analysis/table_18.py` prints them beside the cache-selection control.
+
 ---
 
 ## The method in one page

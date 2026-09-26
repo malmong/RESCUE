@@ -43,6 +43,7 @@ BASES = ("snapkv", "laprox", "h2o", "lava", "rkv")
 #   dense             no eviction
 #   lookaheadkv / foresightkv   future-aware comparators
 #   cache_select      the selector choosing between SnapKV's and ForesightKV's caches
+#   probe_attn_w{1,8,32}  the training-free probe-attention control, by probe weight
 #   probe2/4/8        selector probe length other than one token
 #   seed1/seed2       the scorer retrained under a different seed
 #   kslot16/32/64     the correction restricted to k contested slots
@@ -106,6 +107,12 @@ _add("p128_foresight64", "llama3_8b", "foresightkv", None, 128)
 # from results/per_document.csv.
 _add("orc50", "llama3_8b", "oracle_future", "snapkv", 128)
 _add("cachesel", "llama3_8b", "cache_select", "snapkv", 128)
+# The training-free probe-attention control of Appendix N.1: the probe token's
+# own attention row added to SnapKV's vote, at three weights. Unit weight is
+# what the paper reports; the other two are on record because the weight is a
+# live knob in the released code (RESCUE_PROBE_WEIGHT).
+for _w in (1, 8, 32):
+    _add(f"probe_w{_w}", "llama3_8b", f"probe_attn_w{_w}", "snapkv", 128)
 
 # Seed variance: the same recipe retrained under two further seeds, on the
 # three tasks the paper reports. Seed 0 is the shipped scorer.

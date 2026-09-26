@@ -262,15 +262,33 @@ def main() -> None:
 
     budget = args.budget_tokens or cfg.budget["total_tokens"]
     name = run_name(args, cfg, budget)
-    suffix = "all" if args.task == "all" else args.task
+
+    # LongBench wraps eleven tasks in the backbone's chat template and scores
+    # the other five as raw completions. One OpenCompass job carries one
+    # setting, so a mixed task list is split into one job per setting instead
+    # of being forced onto a single one -- running the eleven without the
+    # template is a different experiment, and not the one the paper reports.
+    groups: dict[bool, list[str]] = {}
+    for t in tasks:
+        groups.setdefault(cfg.uses_chat_template(t), []).append(t)
+    if args.task == "all":
+        labels = {True: "all-chat", False: "all-raw"}
+    else:
+        labels = {True: args.task, False: args.task}
 
     cfg_dir = REPO_ROOT / "runs" / "configs"
     cfg_dir.mkdir(parents=True, exist_ok=True)
-    cfg_path = cfg_dir / f"{name}-{suffix}.py"
-    cfg_path.write_text(build_config(args, cfg, tasks, budget, name), encoding="utf-8")
-    work_dir = Path(args.work_dir) / f"{name}-{suffix}"
-    print("config:  ", cfg_path)
-    print("work_dir:", work_dir)
+    jobs = []
+    for chat in sorted(groups, reverse=True):
+        group = groups[chat]
+        suffix = labels[chat]
+        cfg_path = cfg_dir / f"{name}-{suffix}.py"
+        cfg_path.write_text(build_config(args, cfg, group, budget, name),
+                            encoding="utf-8")
+        work_dir = Path(args.work_dir) / f"{name}-{suffix}"
+        print("config:  ", cfg_path)
+        print("work_dir:", work_dir)
+        jobs.append((cfg_path, work_dir, group))
     if args.dry_run:
         return
 
@@ -286,11 +304,13 @@ def main() -> None:
     floor = args.kl_floor if args.kl_floor is not None else rescue["kl_floor"]
     env["RESCUE_KL_FLOOR"] = f"{floor:g}"
 
-    subprocess.run(
-        [sys.executable, str(oc / "run.py"), str(cfg_path), "--work-dir", str(work_dir)],
-        cwd=str(oc), env=env, check=True,
-    )
-    collect(work_dir, name, tasks)
+    for cfg_path, work_dir, group in jobs:
+        subprocess.run(
+            [sys.executable, str(oc / "run.py"), str(cfg_path),
+             "--work-dir", str(work_dir)],
+            cwd=str(oc), env=env, check=True,
+        )
+        collect(work_dir, name, group)
 
 
 if __name__ == "__main__":
