@@ -1869,6 +1869,13 @@ class RaggedRKVState:
         self.total_evicted = 0
 
         self.rescue = None      # set by generate_one for --rfc-recent-style rkv
+        # RESCUE_SHARE_SBASE: one dict per DOCUMENT, handed in by generate_one
+        # and shared by every candidate state the fidelity selector builds.
+        # Only read during the prefill prune (_in_prefill), because a decode
+        # prune has a different query window behind the same (layer, n).
+        self._sbase_share = None
+        self._in_prefill = False
+
     def _push_one(self, layer_idx: int, q_new: torch.Tensor) -> None:
         # q_new: [heads, p, head_dim]
         buf = self.query_windows.get(layer_idx)
@@ -1892,7 +1899,11 @@ class RaggedRKVState:
             if q is None:
                 continue
             self._push_one(layer_idx, q[:, -self.window_size:, :])
-        self._prune(cache)
+        self._in_prefill = True
+        try:
+            self._prune(cache)
+        finally:
+            self._in_prefill = False
         self.prefill_retained = cache.total_tokens()
         return cache
 
@@ -1911,10 +1922,23 @@ class RaggedRKVState:
             if n < budget or n <= self.window_size:
                 continue
             key_full = torch.cat(cache.keys[layer_idx], dim=1)  # [1, kv_heads, n, head_dim]
-            score = rkv_final_score(
-                q_win.to(key_full.device), key_full, self.window_size, self.mix_lambda,
-                self.kernel_size, self.retain_ratio, self.retain_direction,
-            )  # [kv_heads, n - window_size]
+            # rkv_final_score builds an [n, n] redundancy block per layer and
+            # reads only the query window and the keys -- neither of which the
+            # candidate lambda touches, since every candidate starts from a
+            # clone of the same dense cache. The selector was paying for it
+            # once per candidate: at 64K its trials cost 43.4 s against the
+            # probe's 82 ms. Computing it once per (layer, n, window) and
+            # reusing it is arithmetically the same score, not an approximation.
+            _share = self._sbase_share if self._in_prefill else None
+            _ck = (layer_idx, n, int(q_win.shape[1]))
+            score = _share.get(_ck) if _share is not None else None
+            if score is None:
+                score = rkv_final_score(
+                    q_win.to(key_full.device), key_full, self.window_size, self.mix_lambda,
+                    self.kernel_size, self.retain_ratio, self.retain_direction,
+                )  # [kv_heads, n - window_size]
+                if _share is not None:
+                    _share[_ck] = score
             if self.rescue is not None:
                 val_full = torch.cat(cache.values[layer_idx], dim=1)
                 pos = torch.arange(n, device=key_full.device).view(1, -1).expand(num_kv_heads, -1)
@@ -2455,6 +2479,17 @@ class DenseEvictionGenerator:
             print(f"[SELTIME] probe={1000*_t_probe:.1f} trials={1000*(_nw()-_tt0):.1f} "
                   f"steps={len(probe_ids)} cands={len(cands)}", flush=True)
         apply_cand(best)
+        # The cache-selection control swaps self.cfg.policy per candidate and the
+        # winner's value would otherwise persist into the NEXT document, where
+        # generate_one reads self.cfg.policy to choose its prefill path. Once h2o
+        # won a document, the following one took the h2o prefill branch, which
+        # returns attentions=None, and the snapkv candidate then raised
+        # "SnapKV requires prefill output attentions". The winning state object
+        # already holds its own cfg, so restoring the base here changes nothing
+        # for this document and fixes the next one. Guarded on _cand_policies so
+        # the lambda path (every RESCUE run) is untouched.
+        if _cand_policies:
+            self.cfg = base_cfg
         # hand back the ORIGINAL cache, not a copy of it. Nothing above mutates
         # dense_past -- the probe and every trial ran on their own clone -- so a
         # further clone only costs a second full-prompt cache at peak (the one
@@ -2764,6 +2799,21 @@ class DenseEvictionGenerator:
             from rescue.policies.scoring import set_probe_rows
             set_probe_rows(_probe_attn, _probe_recent_w)
 
+        # Scoped to THIS document. The fidelity selector builds one state object
+        # per candidate lambda and each recomputes its base policy's own score
+        # from scratch; where that score is expensive and lambda-independent
+        # (R-KV's redundancy block) the candidates can share one copy. Created
+        # here so it dies with the document -- a cache that outlived the document
+        # would hand document N+1 document N's keys.
+        #
+        # On by default: the shared score is the same tensor the per-candidate
+        # path would have produced, and the two paths were checked to agree on
+        # every one of 900 documents (Qasper, TREC, LCC under R-KV, the base
+        # policy whose ranking is the most sensitive to a perturbation of this
+        # kind) -- identical predictions and identical task scores. Set
+        # RESCUE_SHARE_SBASE=0 to take the old path and repeat that check.
+        _sbase_share = None if os.environ.get("RESCUE_SHARE_SBASE", "1") == "0" else {}
+
         def _build_state_and_prune(past_in):
             """Build the policy's state object and run its one-shot prefill
             eviction on past_in.
@@ -2786,6 +2836,7 @@ class DenseEvictionGenerator:
                 return st, st.initialize_after_prefill(past_in, prefill.attentions, seq_len)
             if policy == "rkv" or ragged_base == "rkv":
                 st = RaggedRKVState(self.cfg, self.model)
+                st._sbase_share = _sbase_share
                 if ragged_base == "rkv":
                     st.rescue = RescueInjection(
                         self.cfg, self.model, self.unified_rfc_scorer or self.rfc_scorer,
