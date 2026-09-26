@@ -8,9 +8,10 @@ populates them from the Hugging Face Hub.
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import yaml
 
@@ -37,6 +38,11 @@ LONGBENCH_TASKS = (
 
 def _env_path(name: str, default: str) -> Path:
     return Path(os.environ.get(name, default)).expanduser()
+
+
+# The model the paper's main grid runs on; scripts default to it, and the
+# feature cache and checkpoint names carry a model suffix only for the others.
+DEFAULT_MODEL = "llama3_8b"
 
 
 def model_root() -> Path:
@@ -68,12 +74,30 @@ class ModelConfig:
     rescue: dict[str, Any] = field(default_factory=dict)
     future_aware: dict[str, Any] = field(default_factory=dict)
 
+    # Class-level, so the notice below is printed once per interpreter rather
+    # than once per document.
+    _warned: ClassVar[dict[str, bool]] = {}
+
     @property
     def path(self) -> Path:
         """Local weights directory. A checkout under ``RESCUE_MODEL_ROOT``
-        wins; otherwise the Hub id is handed to transformers as-is."""
+        wins; otherwise the Hub id is handed to transformers as-is.
+
+        The fallback is deliberate but expensive -- transformers will pull
+        ~16 GB per model into the Hub cache -- so it says so once rather than
+        appearing as an unexplained stall in the middle of a long job.
+        """
         local = model_root() / self.hf_id.split("/")[-1]
-        return local if local.exists() else Path(self.hf_id)
+        if local.exists():
+            return local
+        if not ModelConfig._warned.get(self.hf_id):
+            ModelConfig._warned[self.hf_id] = True
+            print(f"[rescue] {local} not found; falling back to the Hub id "
+                  f"{self.hf_id!r}, which downloads the weights.\n"
+                  f"[rescue] Point RESCUE_MODEL_ROOT at your checkout, or run "
+                  f"scripts/download_assets.sh, to use local weights instead.",
+                  file=sys.stderr, flush=True)
+        return Path(self.hf_id)
 
     def allocation(self, base: str) -> str:
         return self.bases.get(base, {}).get("allocation", "per_head")

@@ -7,6 +7,8 @@ accelerate>=0.30
 safetensors>=0.4
 pyyaml>=6.0
 numpy>=1.24
+pandas>=2.0          # training corpora and the two comparator scorers read parquet
+pyarrow>=14.0
 
 # Tables and figures
 matplotlib>=3.7

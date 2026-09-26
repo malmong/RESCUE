@@ -5,6 +5,10 @@
 # deliberately not fitted to the evaluation distribution. About 56 MB of JSONL;
 # not committed, because it is derived data.
 set -euo pipefail
+
+# Python interpreter: override with PYTHON=... for a venv or a specific
+# build. Bare `python` is not present on every system.
+PYTHON="${PYTHON:-python3}"
 cd "$(dirname "$0")/.."
 
 OUT="${RESCUE_CORPUS_DIR:-${RESCUE_FEATURE_ROOT:-$PWD/assets/train}/corpora}"
@@ -13,6 +17,6 @@ export RESCUE_CORPUS_DIR="$OUT"
 
 for s in prepare_nq_corpus prepare_nq_corpus_extra prepare_arxiv_corpus; do
   echo "== $s"
-  python "scripts/corpora/$s.py"
+  "$PYTHON" "scripts/corpora/$s.py"
 done
 echo "corpora -> $OUT"

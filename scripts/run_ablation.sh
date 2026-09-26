@@ -9,6 +9,10 @@
 #   full-future target, gated                 the same scorer under the selector
 #   budget sweep                              --budget-tokens 256 / 1024
 set -euo pipefail
+
+# Python interpreter: override with PYTHON=... for a venv or a specific
+# build. Bare `python` is not present on every system.
+PYTHON="${PYTHON:-python3}"
 cd "$(dirname "$0")/.."
 
 MODEL="${1:-llama3_8b}"
@@ -20,22 +24,22 @@ for base in "${BASES[@]}"; do
   ckpt="results/checkpoints/rescue_${MODEL}_${base}.pt"
   [ -f "$ckpt" ] || continue
 
-  python scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
+  "$PYTHON" scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
       --checkpoint "$ckpt" --task all --gpu "$GPU" --lambdas 1 --tag corr
 
   if [ -f "$FF" ]; then
-    python scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
+    "$PYTHON" scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
         --checkpoint "$FF" --task all --gpu "$GPU" --lambdas 1 --tag ff
-    python scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
+    "$PYTHON" scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
         --checkpoint "$FF" --task all --gpu "$GPU" --tag ffsel
   fi
 
   for budget in 256 1024; do
     b_ckpt="results/checkpoints/rescue_${MODEL}_${base}_b${budget}.pt"
-    python scripts/evaluate.py --model "$MODEL" --method "$base" \
+    "$PYTHON" scripts/evaluate.py --model "$MODEL" --method "$base" \
         --task all --gpu "$GPU" --budget-tokens "$budget" --tag "b${budget}"
     [ -f "$b_ckpt" ] || continue
-    python scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
+    "$PYTHON" scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
         --checkpoint "$b_ckpt" --task all --gpu "$GPU" --budget-tokens "$budget" --tag "b${budget}"
   done
 
@@ -43,7 +47,7 @@ for base in "${BASES[@]}"; do
   case "$base" in
     snapkv|laprox)
       for p in 2 4 8; do
-        python scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
+        "$PYTHON" scripts/evaluate.py --model "$MODEL" --method rescue --base "$base" \
             --checkpoint "$ckpt" --task all --gpu "$GPU" --probe-len "$p" --tag "p${p}"
       done ;;
   esac

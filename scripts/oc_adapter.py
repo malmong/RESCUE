@@ -9,11 +9,6 @@ import torch
 import transformers
 from safetensors.torch import load_file
 
-from opencompass.models.base import BaseModel
-from opencompass.registry import MODELS
-from opencompass.utils.logging import get_logger
-from opencompass.utils.prompt import PromptList
-
 # This module is imported by the generated OpenCompass config, which runs with
 # OpenCompass's cwd, so the repo root is resolved from this file rather than
 # from the process. Importing it is what registers the model type -- the config
@@ -21,6 +16,27 @@ from opencompass.utils.prompt import PromptList
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from rescue.models import opencompass_root  # noqa: E402
+
+# Normally this module is imported from inside OpenCompass, so the package is
+# already importable. It is resolved through OPENCOMPASS_ROOT as well so that a
+# checkout which has not pip-installed OpenCompass still works, and so that the
+# failure names the directory that was searched.
+_OC = str(opencompass_root())
+if _OC not in sys.path:
+    sys.path.insert(0, _OC)
+try:
+    from opencompass.models.base import BaseModel
+    from opencompass.registry import MODELS
+    from opencompass.utils.logging import get_logger
+    from opencompass.utils.prompt import PromptList
+except ImportError as exc:  # pragma: no cover - depends on the checkout
+    raise SystemExit(
+        f"cannot import OpenCompass from {_OC}: {exc}\n"
+        "This adapter is the evaluation harness's model class and needs a\n"
+        "checkout. Set OPENCOMPASS_ROOT, or run scripts/download_assets.sh."
+    ) from exc
 
 from rescue.policies.scoring import BaselineConfig, supported_policies  # noqa: E402
 from rescue.eviction import DenseEvictionGenerator  # noqa: E402

@@ -134,9 +134,14 @@ def build_config(args: argparse.Namespace, cfg: ModelConfig, tasks: list[str],
     ckpt = repr(str(Path(args.checkpoint).expanduser().resolve())) if args.checkpoint else "None"
 
     return f"""{dataset_block(tasks)}
-import sys
-sys.path.insert(0, {str(REPO_ROOT)!r})
-from evaluation.oc_adapter import KVCacheEvictionHF
+# The adapter lives in this repo, not inside OpenCompass, so the checkout has
+# to be importable. The `sys` binding is deleted again because OpenCompass
+# deepcopies this config and a module object left in its namespace is not
+# picklable ("cannot pickle 'module' object").
+import sys as _sys
+_sys.path.insert(0, {str(REPO_ROOT)!r})
+from scripts.oc_adapter import KVCacheEvictionHF
+del _sys
 
 models = [
     dict(
@@ -168,7 +173,7 @@ models = [
         kv_rkv_retain_direction={cfg.rkv['retain_direction']!r},
         kv_evict_during_decode=False,
         kv_use_chat_template={chat},
-        kv_learned_checkpoint={ckpt},
+        learned_checkpoint={ckpt},
         kv_foresight_recent_window={cfg.future_aware['foresight_recent_window']},
         kv_lookahead_size={cfg.future_aware['lookahead_size']},
         kv_lookahead_lora_rank={cfg.future_aware['lookahead_lora_rank']},

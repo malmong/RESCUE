@@ -7,9 +7,13 @@ import json
 import os
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 from datasets import load_dataset
 
-OUT = Path(os.environ.get("RESCUE_CORPUS_DIR", "corpora")) / "nq_corpus_extra.jsonl"
+OUT = Path(os.environ.get("RESCUE_CORPUS_DIR",
+                Path(os.environ.get("RESCUE_FEATURE_ROOT",
+                                    REPO_ROOT / "assets" / "train")) / "corpora")) / "nq_corpus_extra.jsonl"
 SKIP_N = 260
 TARGET_N = 260
 MIN_CONTEXT_CHARS = 4000
@@ -25,6 +29,7 @@ def main():
     written = 0
     skipped = 0
     seen = 0
+    OUT.parent.mkdir(parents=True, exist_ok=True)
     with OUT.open("w", encoding="utf-8") as out_f:
         for row in ds:
             seen += 1

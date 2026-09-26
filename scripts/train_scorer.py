@@ -8,6 +8,7 @@ Everything that defines the recipe is copied from the original exactly:
   optimiser     Adam, lr 1e-3, ONE step per (document, layer)
   epochs        15
   split         random.Random(0).shuffle(samples); first 40 docs are validation
+                (a smaller cache, e.g. from --limit, holds out a fifth instead)
   norm stats    mean/std over the first 12 TRAIN docs, layers 0/8/16/24/31 only,
                 std clamped at 1e-3
 The only departure is where X and the rescue mask come from -- disk instead of a
@@ -44,8 +45,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT / "train" / "_original"))
 sys.path.insert(0, str(REPO_ROOT))
+
+from rescue.models import DEFAULT_MODEL, available  # noqa: E402
+
 ROOT = Path(os.environ.get("RESCUE_FEATURE_ROOT", REPO_ROOT / "assets" / "train"))
 FEATURES = ROOT / "features"
 CKPT_DIR = Path(os.environ.get("RESCUE_CKPT_DIR", REPO_ROOT / "results" / "checkpoints"))
@@ -137,8 +140,7 @@ def main():
                          "overwrite a shipped checkpoint.")
     ap.add_argument("--budget-tokens", type=int, default=128,
                     help="Which budget's feature cache to train on; tags the checkpoint.")
-    ap.add_argument("--model", default="llama31_8b_instruct",
-                    choices=["llama31_8b_instruct", "mistral_7b_instruct_v03", "qwen3_8b"],
+    ap.add_argument("--model", default=DEFAULT_MODEL, choices=available(),
                     help="Which model's feature cache to train on; tags the checkpoint.")
     ap.add_argument("--target", default="rescue", choices=["rescue", "gt"],
                     help="Which cached target to train on. 'gt' reads features_gt/ and "
@@ -147,6 +149,10 @@ def main():
                     help="Which base ranker's feature cache to train on. The rescue mask "
                          "in each cache is defined against that base's own evictions, so "
                          "a scorer is only valid for the base it was trained against.")
+    ap.add_argument("--norescue", action="store_true",
+                    help="Ablation: train on the (document, layer) pairs whose rescue set is "
+                         "empty as well, with a uniform target, instead of dropping them. "
+                         "Writes a separate checkpoint so the shipped one is never overwritten.")
     args = ap.parse_args()
     global FEATURES
     if args.target == "gt":
@@ -156,7 +162,7 @@ def main():
         FEATURES = ROOT / "features_gt"
     elif args.base != "laprox":
         FEATURES = ROOT / f"features_{args.base}"
-    if args.model != "llama31_8b_instruct":
+    if args.model != DEFAULT_MODEL:
         FEATURES = FEATURES.parent / f"{FEATURES.name}_{args.model}"
     if int(args.budget_tokens) != 128:
         FEATURES = FEATURES.parent / f"{FEATURES.name}_b{int(args.budget_tokens)}"
@@ -170,7 +176,23 @@ def main():
     # off the first N_VAL_DOCS for validation
     random.Random(args.seed).shuffle(paths)
     torch.manual_seed(args.seed)
-    val_paths, train_paths = paths[:N_VAL_DOCS], paths[N_VAL_DOCS:]
+    # The paper's split holds out a fixed 40 documents. On a cache built with
+    # scripts/train.py --limit (a smoke test) there can be fewer than that in
+    # total, which used to leave train_paths empty and fail several steps later
+    # inside torch.cat with nothing to point at.
+    n_val = N_VAL_DOCS
+    if len(paths) <= N_VAL_DOCS:
+        n_val = max(1, len(paths) // 5)
+        print(f"  only {len(paths)} cached documents: holding out {n_val} rather "
+              f"than the usual {N_VAL_DOCS}. This is a smoke-test split, not the "
+              f"paper's recipe -- cache the full corpora to reproduce a scorer.",
+              flush=True)
+    val_paths, train_paths = paths[:n_val], paths[n_val:]
+    if not train_paths:
+        raise SystemExit(
+            f"no training documents: the cache under {FEATURES} holds "
+            f"{len(paths)}. Build more with scripts/cache_features.py, or drop "
+            f"--limit.")
     print(f"[{time.ctime()}] {args.set}: corpora={corpora}  "
           f"train={len(train_paths)} val={len(val_paths)} docs", flush=True)
 
@@ -210,10 +232,20 @@ def main():
         losses = []
         for X, mask in zip(d["X"], d["rescue"]):
             n_rescue = int(mask.sum())
-            if n_rescue == 0:
+            if n_rescue == 0 and not args.norescue:
                 continue
             Xn = ((X.to(dev) - feat_mean) / feat_std)
-            target = mask.to(dev).float() / n_rescue
+            if n_rescue == 0:
+                # --norescue: keep the (document, layer) pairs with an empty
+                # rescue set instead of dropping them, and give them a uniform
+                # target. A flat softmax makes Z * s_res add near-equal mass to
+                # every candidate, so the base ranking barely moves -- the
+                # scorer is explicitly taught to do nothing where there is
+                # nothing to recover. This is the ablation the paper reports
+                # against the shipped recipe, which drops those pairs.
+                target = torch.full((Xn.shape[0],), 1.0 / Xn.shape[0], device=dev)
+            else:
+                target = mask.to(dev).float() / n_rescue
             if train:
                 logits = mlp(Xn)
                 loss = -(target * F.log_softmax(logits, dim=-1)).sum()
@@ -262,16 +294,20 @@ def main():
         "softmax_temperature": 1.0,
         "history": history,
     }
-    suffix = "_fullfuture" if args.target == "gt" else ("" if args.base == "laprox" else f"_{args.base}")
-    if args.model != "llama31_8b_instruct":
-        suffix += f"_{args.model}"
+    # Named the way results/checkpoints/ already is, so a retrained scorer
+    # lands beside the shipped ones and --checkpoint takes the same path in
+    # the README either way.
+    stem = f"fullfuture_{args.model}" if args.target == "gt" else \
+           f"rescue_{args.model}_{args.base}"
     if int(args.budget_tokens) != 128:
-        suffix += f"_b{int(args.budget_tokens)}"
+        stem += f"_b{int(args.budget_tokens)}"
     if int(args.seed) != 0:
-        suffix += f"_seed{int(args.seed)}"
-    out = CKPT_DIR / f"rescue_original_{args.set}{suffix}.pt"
+        stem += f"_seed{int(args.seed)}"
+    if args.norescue:
+        stem += "_norescue"        # never overwrite the shipped checkpoint
+    out = CKPT_DIR / f"{stem}.pt"
     torch.save(payload, out)
-    (CKPT_DIR / f"{args.set}{suffix}_summary.json").write_text(json.dumps(
+    (CKPT_DIR / f"{stem}_summary.json").write_text(json.dumps(
         {"set": args.set, "base": args.base, "target": args.target, "corpora": corpora, "n_train": len(train_paths),
          "n_val": len(val_paths), "best_epoch": best, "history": history}, indent=2))
     print(f"[{time.ctime()}] saved {out}  (best val {best['val_loss']:.4f} @ epoch {best['epoch']+1})",

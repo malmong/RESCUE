@@ -1,4 +1,4 @@
-# Llama-3.1-8B-Instruct. Every field here is a value the paper reports;
+# Mistral-7B-Instruct-v0.3. Every field here is a value the paper reports;
 # nothing is tuned per task.
 name: mistral_7b
 hf_id: mistralai/Mistral-7B-Instruct-v0.3

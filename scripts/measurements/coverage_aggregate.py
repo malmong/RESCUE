@@ -1,4 +1,3 @@
-import os
 #!/usr/bin/env python
 """Phase C: combine phase_a (GT + 5 observed + ForesightKV) and phase_b
 (LookaheadKV) per-document score dumps into the coverage table:
@@ -12,6 +11,8 @@ Future_avg   = mean of rank-percentile-normalized {ForesightKV, LookaheadKV}
 every method's very different native units -- see coverage_lib.rank_pct)
 """
 from __future__ import annotations
+
+import os
 
 import argparse
 import sys

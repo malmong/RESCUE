@@ -31,7 +31,12 @@ from rescue.models import available  # noqa: E402
 # The corpus mix the paper trains on: Natural Questions plus arXiv. Both are
 # out of domain for LongBench, which is the point -- the scorer is not fitted
 # to the evaluation distribution.
+# corpus flag -> the file scripts/corpora/ writes. Spelled out rather than
+# derived by chained str.replace, which turned "nq_extra" into
+# "nq_corpus_corpus_extra" and reported a built corpus as missing.
 CORPORA = ["nq", "nq_extra", "arxiv"]
+CORPUS_FILE = {"nq": "nq_corpus.jsonl", "nq_extra": "nq_corpus_extra.jsonl",
+               "arxiv": "arxiv_corpus.jsonl"}
 CORPUS_SET = "set1_nq520_arxiv"
 BASES = ["snapkv", "laprox", "h2o", "lava", "rkv"]
 
@@ -64,8 +69,7 @@ def main() -> None:
 
     corpora_dir = Path(os.environ.get("RESCUE_CORPUS_DIR", feature_root() / "corpora"))
     if not args.skip_cache:
-        missing = [c for c in CORPORA
-                   if not (corpora_dir / f"{c.replace('nq_extra', 'nq_corpus_extra').replace('nq', 'nq_corpus').replace('arxiv', 'arxiv_corpus')}.jsonl").exists()]
+        missing = [c for c in CORPORA if not (corpora_dir / CORPUS_FILE[c]).exists()]
         if missing:
             print(f"training corpora not found under {corpora_dir}.\n"
                   f"Build them first:  bash scripts/build_corpora.sh", file=sys.stderr)

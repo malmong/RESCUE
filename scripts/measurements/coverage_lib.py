@@ -1,11 +1,9 @@
-from pathlib import Path
-import os
 """Shared building blocks for the GT-vs-Observed-vs-Future coverage measurement
 (paper Figure motivation, panel (b)). See coverage_phase_a.py / coverage_phase_b_lookaheadkv.py
 / coverage_aggregate.py for the actual pipeline.
 
 Candidate definition (matches this project's own production eviction convention,
-kvbench/baselines/scoring.py's BaselineConfig defaults):
+rescue/policies/scoring.py's BaselineConfig defaults):
   - protected prefix: [0, SINK_TOKENS)
   - protected recent: [boundary - RECENT_TOKENS, boundary)
   - candidates (the only positions any method's "importance" is compared over):
@@ -22,6 +20,9 @@ visualization convention (not a per-layer/per-head breakdown).
 """
 from __future__ import annotations
 
+from pathlib import Path
+import os
+
 import sys
 from dataclasses import dataclass
 
@@ -30,18 +31,18 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from kvbench.baselines.scoring import (  # noqa: E402
+from rescue.policies.scoring import (  # noqa: E402
     BaselineConfig,
     query_to_kv_attention,
     snapkv_head_token_scores,
     laprox_head_token_scores,
     lava_head_token_scores,
 )
-from kvbench.baselines.rkv import rkv_final_score  # noqa: E402
-from kvbench.dense_eviction_hf import _h2o_chunked_prefill  # noqa: E402
-from kvbench.learned.oracle_future import _oracle_head_distribution  # noqa: E402
-from kvbench.learned.foresightkv_paper import ForesightKVJudgeScorer  # noqa: E402
-from kvbench.future_contrib.extract import install_capture_hooks, SequenceCapture, capture_sequence_chunked  # noqa: E402
+from rescue.policies.rkv import rkv_final_score  # noqa: E402
+from rescue.eviction import _h2o_chunked_prefill  # noqa: E402
+from rescue.oracle_future import _oracle_head_distribution  # noqa: E402
+from rescue.policies.foresightkv_official import ForesightKVJudgeScorer  # noqa: E402
+from rescue.future_contrib.extract import install_capture_hooks, SequenceCapture, capture_sequence_chunked  # noqa: E402
 
 SINK_TOKENS = 4
 RECENT_TOKENS = 64

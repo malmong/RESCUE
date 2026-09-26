@@ -8,7 +8,7 @@ pure `eager_attention_forward` function each backbone's modeling module calls
 unmodified), plus a forward-pre-hook per decoder layer to grab the residual
 hidden_states flowing into it. attn_implementation="eager" forces this path.
 
-Candidate/protected definition mirrors kvbench's own BaselineConfig
+Candidate/protected definition mirrors the policy layer's own BaselineConfig
 (rescue/policies/scoring.py): sink_tokens=4 leading tokens + recent_tokens=64
 trailing window are protected; everything else currently cached is an
 evictable candidate (spec section 2's requirement to match the real

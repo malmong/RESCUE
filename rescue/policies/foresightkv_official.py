@@ -49,7 +49,7 @@ class ForesightKVJudgeScorer:
     `divide_length` decoding steps and keeps persistent attn_acc/attn_acc_decay
     state across calls, this recomputes the 8 statistics fresh from whatever
     attention this call was given every time score_layer runs -- consistent
-    with how kvbench already re-scores every layer at every prefill/decode
+    with how this implementation already re-scores every layer at every prefill/decode
     step for its other learned baselines (H2O, KVP, ...), and with how
     training computed cumsum/cumsum_decay (see train_foresightkv_paper.py's
     documented simplification: those two channels are recomputed per call

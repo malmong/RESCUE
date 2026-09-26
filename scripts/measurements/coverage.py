@@ -1,4 +1,3 @@
-import os
 #!/usr/bin/env python
 """Phase A: unpatched Llama-3.1-8B-Instruct, computes GT oracle + 5 observed
 (H2O/SnapKV/LaProx/LAVa/R-KV) + ForesightKV candidate-token importance scores
@@ -9,6 +8,8 @@ Usage: python coverage_phase_a.py [--limit N] [--gpu 7]
 """
 from __future__ import annotations
 
+import os
+
 import argparse
 import json
 import sys
@@ -18,10 +19,13 @@ from pathlib import Path
 
 import torch
 
-import rescue.models as _registry
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+# The repo root first, so `rescue` resolves however this file is invoked;
+# then this directory, for the sibling coverage_lib.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import rescue.models as _registry  # noqa: E402
 from coverage_lib import compute_doc_scores  # noqa: E402
 from rescue.policies.foresightkv_official import ForesightKVJudgeScorer  # noqa: E402
 

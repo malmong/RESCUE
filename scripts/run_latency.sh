@@ -7,6 +7,10 @@
 # prefill / select / evict split out; scripts/export_latency.py turns the log into
 # results/latency.csv, which the overhead table and the probe-length table read.
 set -euo pipefail
+
+# Python interpreter: override with PYTHON=... for a venv or a specific
+# build. Bare `python` is not present on every system.
+PYTHON="${PYTHON:-python3}"
 cd "$(dirname "$0")/.."
 
 MODEL="${1:-llama3_8b}"
@@ -17,7 +21,7 @@ mkdir -p "$LOG"
 
 run() {  # run <tag> <extra args...>
   local tag="$1"; shift
-  RESCUE_TIMING=1 python scripts/evaluate.py --model "$MODEL" --task "$TASK" \
+  RESCUE_TIMING=1 "$PYTHON" scripts/evaluate.py --model "$MODEL" --task "$TASK" \
       --gpu "$GPU" --tag "tm_$tag" "$@" 2>&1 | tee "$LOG/$tag.log"
 }
 
@@ -29,4 +33,4 @@ for p in 1 2 4 8; do
       --checkpoint "results/checkpoints/rescue_${MODEL}_snapkv.pt" --probe-len "$p"
 done
 
-python scripts/export_latency.py --logs "$LOG"
+"$PYTHON" scripts/export_latency.py --logs "$LOG"

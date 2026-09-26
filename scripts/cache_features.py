@@ -37,16 +37,14 @@ import torch
 # RESCUE_FEATURE_ROOT points (it grows to tens of GB, so it does not belong
 # inside the checkout).
 REPO_ROOT = Path(__file__).resolve().parents[1]
-ORIG = REPO_ROOT / "train" / "_original"
-sys.path.insert(0, str(ORIG))
 sys.path.insert(0, str(REPO_ROOT))
 ROOT = Path(os.environ.get("RESCUE_FEATURE_ROOT", REPO_ROOT / "assets" / "train"))
 
 from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: E402
 from rescue.future_contrib.extract import capture_sequence_chunked  # noqa: E402
-from rescue.models import available, load  # noqa: E402
 
 # numerical core, imported verbatim from the recovered original
+from rescue.models import available, load, DEFAULT_MODEL  # noqa: E402
 from rescue import features as ORIGMOD  # the 18 features (raw9 + rank9)
 
 SINK_TOKENS = ORIGMOD.SINK_TOKENS
@@ -87,8 +85,7 @@ def main():
     ap.add_argument("--corpus", required=True, choices=list(CORPORA))
     ap.add_argument("--gpu", type=int, default=0)
     ap.add_argument("--shard", default="0/1")
-    ap.add_argument("--model", default="llama31_8b_instruct",
-                    choices=["llama31_8b_instruct", "mistral_7b_instruct_v03", "qwen3_8b"],
+    ap.add_argument("--model", default="llama3_8b", choices=available(),
                     help="Features are QK logits and K/V norms of THIS model, and the oracle "
                          "target is its own future attention, so a cache (and the scorer "
                          "trained from it) is valid only for the model that produced it. "
@@ -130,7 +127,7 @@ def main():
         root = ROOT / "features_gt"
     else:
         root = OUT_ROOT if args.base == "laprox" else (ROOT / f"features_{args.base}")
-    if args.model != "llama31_8b_instruct":
+    if args.model != DEFAULT_MODEL:
         root = root.parent / f"{root.name}_{args.model}"
     if int(args.budget_tokens) != BUDGET_TOKENS:
         root = root.parent / f"{root.name}_b{int(args.budget_tokens)}"
@@ -138,7 +135,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"[{time.ctime()}] {args.corpus} shard {args.shard}: {len(rows)} docs on {device}", flush=True)
-    MODEL_TYPE = {"llama31_8b_instruct": "llama", "mistral_7b_instruct_v03": "mistral",
+    MODEL_TYPE = {"llama3_8b": "llama", "mistral_7b": "mistral",
                   "qwen3_8b": "qwen3"}[args.model]
     tokenizer = AutoTokenizer.from_pretrained(str(load(args.model).path))
     model = AutoModelForCausalLM.from_pretrained(
@@ -156,10 +153,8 @@ def main():
     head_dim = getattr(model.config, "head_dim", None) or (model.config.hidden_size // num_heads)
     scaling = head_dim ** -0.5
 
-    # imported here, not at module scope: base_scores imports constants back
-    # from this module, and a top-level import would be circular.
-    from base_scores import get_o_proj_block as _shared_o_proj_block
-    from base_scores import base_head_score as _shared_base_head_score
+    from rescue.base_scores import get_o_proj_block as _shared_o_proj_block
+    from rescue.base_scores import base_head_score as _shared_base_head_score
 
     o_cache: dict[int, list[torch.Tensor]] = {}
 
