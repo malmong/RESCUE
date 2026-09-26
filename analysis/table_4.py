@@ -1,72 +1,82 @@
 #!/usr/bin/env python
-"""Table 4 (tab:mechanism).
+"""Table 4 (tab:future_aware).
 
-Does the correction recover what the base policy actually missed?
+Comparison with methods that predict future importance instead of correcting.
 
-Two set-level quantities per base policy, against the downstream gain:
+LookaheadKV and ForesightKV replace the base policy rather than correct it, so
+their scores are absolute, not deltas: a single column each, against every base
+policy under RESCUE. The point of the table is that the margin is not uniform --
+LookaheadKV matches or exceeds RESCUE on several tasks -- which is why the paper
+reports the per-base spread rather than one number.
 
-    delta coverage   how much more of the oracle future-attention top-B set the
-                     corrected cache retains than the base cache does
-    rescue recall    the share of that base's own miss set the scorer brings back
-
-They order the base policies the same way the downstream gain does at the top
-and diverge at the bottom, which is the point: coverage is necessary and not
-sufficient, because an entry recovered at the cost of one the base had right is
-a wash.
-
-Set-level numbers come from results/measurements/mechanism.csv; the downstream
-column is computed from results/scores.csv.
-
-    python analysis/table_3.py --format text
+    python analysis/table_4.py --format text
 """
 from __future__ import annotations
 
 import argparse
-import csv
 import statistics as st
 from pathlib import Path
 
-from data import (BASE_LABEL, LATEX_FOOTER, REPO_ROOT, Scores, latex_header,
-                    write)
-
-DATA = REPO_ROOT / "results" / "measurements" / "mechanism.csv"
+from data import (BASE_LABEL, BASES, LATEX_FOOTER, Scores, latex_header, write)
 
 
-def rows(sc: Scores, model: str):
-    if not DATA.exists():
-        raise SystemExit(f"{DATA} not found; run scripts/measurements/coverage.py")
-    with open(DATA, encoding="utf-8") as fh:
-        meas = list(csv.DictReader(
-            line for line in fh if not line.startswith("#")))
-    for r in meas:
-        b = r["base"]
-        pair = sc.paired(model, "base", "rescue", b)
-        down = st.mean([v - u for _t, u, v in pair]) if pair else None
-        yield b, float(r["delta_coverage_pt"]), float(r["rescue_recall_pct"]), down
+def collect(sc: Scores, model: str):
+    look = sc.sweep(model, "lookaheadkv")
+    fore = sc.sweep(model, "foresightkv")
+    out = []
+    for b in BASES:
+        r = sc.sweep(model, "rescue", b)
+        common_l = [t for t in r if t in look]
+        common_f = [t for t in r if t in fore]
+        out.append((
+            b,
+            st.mean(list(r.values())) if r else None,
+            st.mean([r[t] - look[t] for t in common_l]) if common_l else None,
+            st.mean([r[t] - fore[t] for t in common_f]) if common_f else None,
+        ))
+    return look, fore, out
 
 
 def text(sc: Scores, model: str) -> str:
-    lines = [f"{model}  --  set-level coverage against the downstream gain, B=128",
-             f"  {'base':8s} {'d coverage':>11s} {'rescue recall':>14s} {'downstream':>11s}"]
-    for b, cov, rec, down in rows(sc, model):
-        d = f"{down:+11.2f}" if down is not None else f"{'--':>11s}"
-        lines.append(f"  {BASE_LABEL[b]:8s} {cov:+10.1f}pt {rec:13.1f}% {d}")
+    look, fore, rows = collect(sc, model)
+    lines = [f"{model}  --  RESCUE against future-aware methods, B=128",
+             f"  LookaheadKV {st.mean(list(look.values())):.2f}   "
+             f"ForesightKV {st.mean(list(fore.values())):.2f}" if look and fore else "  (comparators absent)",
+             f"  {'base':8s} {'+RESCUE':>9s} {'vs Look':>9s} {'vs Fore':>9s}"]
+    for b, r, dl, df in rows:
+        if r is None:
+            continue
+        lines.append(f"  {BASE_LABEL[b]:8s} {r:9.2f} "
+                     f"{dl:+9.2f} {df:+9.2f}" if dl is not None and df is not None
+                     else f"  {BASE_LABEL[b]:8s} {r:9.2f}")
+    got = [(dl, df) for _, r, dl, df in rows if dl is not None and df is not None]
+    if got:
+        lines.append(f"  range vs LookaheadKV {min(x for x, _ in got):+.2f} .. {max(x for x, _ in got):+.2f}")
+        lines.append(f"  range vs ForesightKV {min(y for _, y in got):+.2f} .. {max(y for _, y in got):+.2f}")
     return "\n".join(lines)
 
 
 def latex(sc: Scores, model: str) -> str:
+    look, fore, rows = collect(sc, model)
     out = [latex_header(
-        "Set-level effect of the correction per base policy, against its downstream "
-        "gain, at a $128$-token budget. $\\Delta$Coverage is the change in the share of "
-        "the oracle future-attention top-$B$ set the cache retains; rescue recall is the "
-        "share of that policy's own miss set the scorer brings back.",
-        "tab:mechanism", "lccc"),
-        r"\textbf{Base} & \textbf{$\Delta$Coverage} & \textbf{Rescue recall} & "
-        r"\textbf{Downstream $\Delta$} \\", r"\midrule"]
-    for b, cov, rec, down in rows(sc, model):
-        d = f"${down:+.2f}$" if down is not None else r"\LBmissing"
-        pad = r"\phantom{0}" if rec < 10 else ""
-        out.append(f"{BASE_LABEL[b]} & ${cov:+.1f}$ pt & {pad}${rec:.1f}\\%$ & {d} \\\\")
+        "RESCUE against methods that predict future importance instead of correcting a "
+        "base policy, at a 128-token budget. The comparators replace the base policy, so "
+        "their scores are absolute; each RESCUE row is that base policy corrected.",
+        "tab:future_aware", "lccc"),
+        r"\textbf{Base policy} & \textbf{+ RESCUE} & \textbf{$\Delta$ vs. LookaheadKV} "
+        r"& \textbf{$\Delta$ vs. ForesightKV} \\", r"\midrule"]
+    if look:
+        out.append(f"LookaheadKV & {st.mean(list(look.values())):.2f} & -- & -- \\\\")
+    if fore:
+        out.append(f"ForesightKV & {st.mean(list(fore.values())):.2f} & -- & -- \\\\")
+    out.append(r"\midrule")
+    for b, r, dl, df in rows:
+        if r is None:
+            out.append(f"{BASE_LABEL[b]} & \\LBmissing & \\LBmissing & \\LBmissing \\\\")
+            continue
+        dls = f"${dl:+.2f}$" if dl is not None else r"\LBmissing"
+        dfs = f"${df:+.2f}$" if df is not None else r"\LBmissing"
+        out.append(f"{BASE_LABEL[b]} + RESCUE & {r:.2f} & {dls} & {dfs} \\\\")
     out.append(LATEX_FOOTER)
     return "\n".join(out)
 

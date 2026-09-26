@@ -70,9 +70,13 @@ for _s, _b in (("abl_baseline", "laprox"), ("snapkvV_base", "snapkv"),
                ("h2oV_base", "h2o"), ("rkvV_base", "rkv"),
                ("p128_lava_base", "lava")):
     _add(_s, "llama3_8b", "base", _b, 128)
-for _s, _b in (("fidp1_laprox", "laprox"), ("fidp1_snapkv", "snapkv"),
-               ("fidp1_h2o", "h2o"), ("fidp1_rkv", "rkv"),
-               ("p128_lava_fid", "lava")):
+# llfloor_* is the re-run of all 80 Llama cells with the abstention floor
+# enabled, so that one protocol covers every backbone. It is what the paper
+# reports; the earlier fidp1_*/p128_lava_fid runs predate the rule and differ
+# on five of the eighty cells.
+for _s, _b in (("llfloor_laprox", "laprox"), ("llfloor_snapkv", "snapkv"),
+               ("llfloor_h2o", "h2o"), ("llfloor_rkv", "rkv"),
+               ("llfloor_lava", "lava")):
     _add(_s, "llama3_8b", "rescue", _b, 128, require="fidelity0_1p1")
 for _b in BASES:
     _add(f"p128_corr_{_b}", "llama3_8b", "rescue_ungated", _b, 128)
@@ -86,8 +90,13 @@ for _b in BASES:
                  require=f"fidelity0_1p{_n}")
     for _budget in (256, 1024):
         _add(f"b{_budget}_{_b}_base", "llama3_8b", "base", _b, _budget)
-        _add(f"b{_budget}_{_b}_fid", "llama3_8b", "rescue", _b, _budget,
+        _add(f"b{_budget}f_{_b}", "llama3_8b", "rescue", _b, _budget,
              require="fidelity0_1p1")
+# H2O's full-future-gated NarrativeQA cell was re-run under its own name after
+# a fix; without it that sweep is 15/16 and the arm's mean is not comparable
+# with the others.
+_add("p128_nq_ffsel_h2o", "llama3_8b", "fullfuture_gated", "h2o", 128,
+     require="fidelity0_1p1")
 _add("dense16", "llama3_8b", "dense", None, 0)
 _add("p128_lookahead", "llama3_8b", "lookaheadkv", None, 128)
 _add("p128_foresight64", "llama3_8b", "foresightkv", None, 128)
@@ -108,8 +117,8 @@ for _b in ("h2o", "rkv"):
 # Restricting the correction to k contested slots, and a finer lambda grid.
 for _b in ("snapkv", "rkv"):
     for _k in (16, 32, 64):
-        _add(f"ks{_k}_{_b}", "llama3_8b", f"kslot{_k}", _b, 128, require="kslot")
-    _add(f"lam4_{_b}", "llama3_8b", "lambda4", _b, 128,
+        _add(f"ks{_k}f_{_b}", "llama3_8b", f"kslot{_k}", _b, 128, require="kslot")
+    _add(f"lam4f_{_b}", "llama3_8b", "lambda4", _b, 128,
          require="fidelity0_0.5_1_2p1")
 
 # ---- Mistral-7B-Instruct-v0.3 ---------------------------------------------
@@ -133,13 +142,23 @@ for _b in BASES:
 
 # A few cells had to be re-run under their own suffix after a fix; same flags,
 # same checkpoint, so they stand in for the original cell.
-ALIASES = {
-    ("p128_nq_rkv_fid", "narrativeqa"): "fidp1_rkv",
-    ("p128_nq_h2o_fid", "narrativeqa"): "fidp1_h2o",
-}
+# A few cells were re-run under their own suffix after a fix; same flags, same
+# checkpoint, so they stand in for the original cell. The rescue arm no longer
+# needs one: llfloor_* covers all sixteen tasks for every base.
+ALIASES: dict[tuple[str, str], str] = {}
 
 
 def score_of(run_dir: str) -> float | None:
+    """The run's score as OpenCompass reports it, to two decimals.
+
+    The results JSON carries more digits, but every per-task number in the
+    paper is the two-decimal one, and its sixteen-task means are the mean of
+    those. Reading the JSON instead moves two of the paper's cells by 0.01
+    (Mistral/H2O base, Qwen/R-KV under RESCUE) and Qwen's mean by the same,
+    because the extra digits are re-introduced under a mean of rounded values.
+    Keeping the rounding here is what makes a printed row average to its own
+    printed mean.
+    """
     for f in sorted(glob.glob(os.path.join(run_dir, "*/summary/summary_*.csv")),
                     reverse=True):
         for row in csv.reader(open(f, encoding="utf-8")):

@@ -1,76 +1,72 @@
 #!/usr/bin/env python
-"""Table 9 (tab:runtime_overhead). What the selector costs, and where.
+"""Table 9 (tab:mechanism).
 
-RESCUE is about twice the most expensive predicted-future method it is compared
-against, not less than it: this is accuracy bought with latency, not latency
-saved. Almost none of the cost is the scorer -- it is building and replaying one
-pruned cache per candidate lambda, which is why the number of candidates, not
-the size of the model, is what the cost scales with.
+Does the correction recover what the base policy actually missed?
 
-Read from results/latency.csv, which scripts/run_latency.sh regenerates.
+Two set-level quantities per base policy, against the downstream gain:
 
-    python analysis/table_8.py --format text
+    delta coverage   how much more of the oracle future-attention top-B set the
+                     corrected cache retains than the base cache does
+    rescue recall    the share of that base's own miss set the scorer brings back
+
+They order the base policies the same way the downstream gain does at the top
+and diverge at the bottom, which is the point: coverage is necessary and not
+sufficient, because an entry recovered at the cost of one the base had right is
+a wash.
+
+Set-level numbers come from results/measurements/mechanism.csv; the downstream
+column is computed from results/scores.csv.
+
+    python analysis/table_9.py --format text
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import statistics as st
 from pathlib import Path
 
-from data import LATEX_FOOTER, REPO_ROOT, latex_header, write
+from data import (BASE_LABEL, LATEX_FOOTER, REPO_ROOT, Scores, latex_header,
+                    write)
 
-LATENCY = REPO_ROOT / "results" / "latency.csv"
-ROWS = [
-    ("snapkv", "", "total", "SnapKV", 0),
-    ("lookaheadkv", "", "total", "LookaheadKV$^{\\dagger}$", 0),
-    ("foresightkv", "", "total", "ForesightKV", 0),
-    ("rescue_corr", "", "total", "RESCUE correction only", 0),
-    ("rescue", "1", "total", "RESCUE + 1-token selector", 0),
-    ("rescue", "1", "probe", "dense probe", 1),
-    ("rescue", "1", "candidates", "two candidate caches", 1),
-]
+DATA = REPO_ROOT / "results" / "measurements" / "mechanism.csv"
 
 
-def load() -> dict[tuple[str, str, str], float]:
-    if not LATENCY.exists():
-        raise SystemExit(f"{LATENCY} not found; run scripts/run_latency.sh")
-    out = {}
-    with open(LATENCY, encoding="utf-8") as fh:
-        for r in csv.DictReader(line for line in fh if not line.startswith("#")):
-            out[(r["method"], r["probe_len"], r["component"])] = float(r["ms"])
-    return out
+def rows(sc: Scores, model: str):
+    if not DATA.exists():
+        raise SystemExit(f"{DATA} not found; run scripts/measurements/coverage.py")
+    with open(DATA, encoding="utf-8") as fh:
+        meas = list(csv.DictReader(
+            line for line in fh if not line.startswith("#")))
+    for r in meas:
+        b = r["base"]
+        pair = sc.paired(model, "base", "rescue", b)
+        down = st.mean([v - u for _t, u, v in pair]) if pair else None
+        yield b, float(r["delta_coverage_pt"]), float(r["rescue_recall_pct"]), down
 
 
-def text() -> str:
-    d = load()
-    lines = ["Added logic per document, median, Llama-3.1-8B-Instruct on Qasper",
-             f"  {'method':34s} {'ms':>8s}"]
-    for method, probe, comp, label, indent in ROWS:
-        v = d.get((method, probe, comp))
-        if v is None:
-            continue
-        lines.append(f"  {'  ' * indent + label:34s} {v:8.1f}")
+def text(sc: Scores, model: str) -> str:
+    lines = [f"{model}  --  set-level coverage against the downstream gain, B=128",
+             f"  {'base':8s} {'d coverage':>11s} {'rescue recall':>14s} {'downstream':>11s}"]
+    for b, cov, rec, down in rows(sc, model):
+        d = f"{down:+11.2f}" if down is not None else f"{'--':>11s}"
+        lines.append(f"  {BASE_LABEL[b]:8s} {cov:+10.1f}pt {rec:13.1f}% {d}")
     return "\n".join(lines)
 
 
-def latex() -> str:
-    d = load()
+def latex(sc: Scores, model: str) -> str:
     out = [latex_header(
-        "Eviction- and selection-related latency per document, median over $200$ Qasper "
-        "documents at $\\sim$5K tokens on Llama-3.1-8B-Instruct. Prefill and generation "
-        "are excluded; see the latency protocol for what the interval covers. "
-        "$^{\\dagger}$LookaheadKV runs its own decoder path, so its figure is measured "
-        "differently and is not directly comparable.",
-        "tab:runtime_overhead", "lr"),
-        r"\textbf{Method} & \textbf{Latency} \\", r"\midrule"]
-    for method, probe, comp, label, indent in ROWS:
-        v = d.get((method, probe, comp))
-        if v is None:
-            continue
-        if indent:
-            out.append(f"\\quad \\emph{{{label}}} & \\emph{{{v:.1f} ms}} \\\\")
-        else:
-            out.append(f"{label} & {v:.1f} ms \\\\")
+        "Set-level effect of the correction per base policy, against its downstream "
+        "gain, at a $128$-token budget. $\\Delta$Coverage is the change in the share of "
+        "the oracle future-attention top-$B$ set the cache retains; rescue recall is the "
+        "share of that policy's own miss set the scorer brings back.",
+        "tab:mechanism", "lccc"),
+        r"\textbf{Base} & \textbf{$\Delta$Coverage} & \textbf{Rescue recall} & "
+        r"\textbf{Downstream $\Delta$} \\", r"\midrule"]
+    for b, cov, rec, down in rows(sc, model):
+        d = f"${down:+.2f}$" if down is not None else r"\LBmissing"
+        pad = r"\phantom{0}" if rec < 10 else ""
+        out.append(f"{BASE_LABEL[b]} & ${cov:+.1f}$ pt & {pad}${rec:.1f}\\%$ & {d} \\\\")
     out.append(LATEX_FOOTER)
     return "\n".join(out)
 
@@ -78,10 +74,12 @@ def latex() -> str:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--model", default="llama3_8b")
     p.add_argument("--format", choices=["latex", "text"], default="latex")
     p.add_argument("--out", type=Path)
     args = p.parse_args()
-    write(args.out, latex() if args.format == "latex" else text())
+    sc = Scores()
+    write(args.out, latex(sc, args.model) if args.format == "latex" else text(sc, args.model))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,13 @@
+# RULER niah_single_2 at B=128 on Llama-3.1-8B-Instruct, medians per
+# document. added_ms is eviction- and selection-related logic only;
+# decode_kv_mb is the cache generation runs against, not the peak.
+arm,length_k,added_ms,peak_gib,decode_kv_mb,n
+snapkv,16,8.2,22.09,16.50,100
+snapkv,32,12.8,29.44,16.50,100
+snapkv,64,22.9,43.93,16.38,100
+snapkv+rescue,16,375.6,30.68,16.50,100
+snapkv+rescue,32,584.0,41.96,16.50,100
+snapkv+rescue,64,942.5,68.27,16.38,100
+rkv+rescue,16,1596.7,29.65,16.50,100
+rkv+rescue,32,5532.1,42.70,16.50,100
+rkv+rescue,64,22062.5,68.27,16.38,100

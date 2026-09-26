@@ -1,16 +1,15 @@
 #!/usr/bin/env python
-"""Table 13 (tab:selector_margin). When the selector's signal is reliable.
+"""Table 13 (tab:memscale). How the cost grows with the prompt, not the budget.
 
-The selector picks the retrospectively better cache on 55.6% of the deciding
-documents, and its KL margin correlates with the realized score change at only
-rho=+0.11. Both are averages over a quantity that varies by four orders of
-magnitude, so they describe the selector where it has no signal as much as where
-it has one.
+Two things separate here. The added logic is linear in the prompt for SnapKV and
+quadratic for R-KV, because R-KV's own scoring rule builds an n x n redundancy
+block per layer -- a cost of the base policy that the correction inherits, and
+which the selector pays once per document rather than once per candidate. The
+peak allocation is a prefill-time spike: the cache generation actually runs
+against is the base policy's, and does not grow with it.
 
-Splitting the deciding documents by the size of the selector's own margin
-separates the two regimes: near chance where the probe carries no information,
-meaningfully better where it does -- and the second regime is where the large
-score differences are.
+Read from results/measurements/memscale.csv, which
+scripts/export_memscale.py regenerates.
 
     python analysis/table_13.py --format text
 """
@@ -18,90 +17,84 @@ from __future__ import annotations
 
 import argparse
 import csv
-import statistics as st
 from pathlib import Path
 
 from data import LATEX_FOOTER, REPO_ROOT, latex_header, write
 
-PER_DOC = REPO_ROOT / "results" / "per_document.csv"
-TOL = 1e-9
-QUINTILES = 5
+SRC = REPO_ROOT / "results" / "measurements" / "memscale.csv"
+LENGTHS = (16, 32, 64)
+LABEL = {"snapkv": "SnapKV", "snapkv+rescue": "{+}RESCUE", "rkv+rescue": "R-KV {+}RESCUE"}
 
 
-def load(model: str):
-    """(|margin|, accepted, right, realized gain) per deciding document.
-
-    A document counts only where the two caches score differently, the
-    selector's score matches one of them, and a margin was logged.
-    """
-    if not PER_DOC.exists():
-        raise SystemExit(f"{PER_DOC} not found; run scripts/export_per_document.py")
-    out = []
-    with open(PER_DOC, encoding="utf-8") as fh:
-        for r in csv.DictReader(fh):
-            if r["model"] != model or not r["kl_margin"]:
-                continue
-            b, c, s = (float(r["score_base"]), float(r["score_corr"]),
-                       float(r["score_selector"]))
-            if abs(c - b) <= TOL:
-                continue
-            near_c, near_b = abs(s - c) <= TOL, abs(s - b) <= TOL
-            if not (near_c or near_b):
-                continue
-            # Rejecting serves the base cache, so only an accept moves the score.
-            out.append((abs(float(r["kl_margin"])), near_c, (c > b) == near_c,
-                        (c - b) if near_c else 0.0))
-    out.sort()
+def load() -> dict[tuple[str, int], dict[str, float]]:
+    if not SRC.exists():
+        raise SystemExit(f"{SRC} not found; run scripts/export_memscale.py --runs ...")
+    out = {}
+    with open(SRC, encoding="utf-8") as fh:
+        for r in csv.DictReader(line for line in fh if not line.startswith("#")):
+            out[(r["arm"], int(r["length_k"]))] = {
+                "added": float(r["added_ms"]), "peak": float(r["peak_gib"]),
+                "kv": float(r["decode_kv_mb"]), "n": int(r["n"])}
     return out
 
 
-def rows(model: str):
-    d = load(model)
-    n = len(d)
-    for i in range(QUINTILES):
-        g = d[i * n // QUINTILES:(i + 1) * n // QUINTILES]
-        yield (i + 1, g[0][0], g[-1][0], len(g),
-               100 * sum(1 for *_, ok, _ in g if ok) / len(g),
-               100 * sum(1 for _, a, _, _ in g if a) / len(g),
-               st.mean([x for *_, x in g]))
-    yield (None, d[0][0], d[-1][0], n,
-           100 * sum(1 for *_, ok, _ in d if ok) / n,
-           100 * sum(1 for _, a, _, _ in d if a) / n,
-           st.mean([x for *_, x in d]))
+def ms(v: float) -> str:
+    return f"{v / 1000:.1f} s" if v >= 1000 else f"{v:.0f} ms"
 
 
-def text(model: str) -> str:
-    lines = [f"{model}  --  selector behaviour by the size of its own margin",
-             f"  {'quintile':10s} {'|margin| range':>24s} {'n':>5s} {'acc':>7s} "
-             f"{'accepts':>8s} {'gain/doc':>9s}"]
-    for q, lo, hi, n, acc, accept, gain in rows(model):
-        lines.append(f"  {('all' if q is None else f'Q{q}'):10s} "
-                     f"{f'{lo:.2e} - {hi:.2e}':>24s} {n:5d} {acc:6.1f}% "
-                     f"{accept:7.1f}% {gain:+9.2f}")
-    return "\n".join(lines)
+def text() -> str:
+    d = load()
+    head = "".join(f"{str(L) + 'K':>12s}" for L in LENGTHS)
+    w = ["memscale  --  RULER niah_single_2, B=128, median per document",
+         "  " + " " * 22 + head]
+    for arm in ("snapkv", "snapkv+rescue", "rkv+rescue"):
+        lab = LABEL[arm].replace("{+}", "+")
+        cells = []
+        for L in LENGTHS:
+            c = d.get((arm, L))
+            cells.append(f"{ms(c['added']) if c else '--':>12s}")
+        w.append(f"  added  {lab:15s}" + "".join(cells))
+    for arm in ("snapkv", "snapkv+rescue"):
+        lab = LABEL[arm].replace("{+}", "+")
+        cells = []
+        for L in LENGTHS:
+            c = d.get((arm, L))
+            cells.append(f"{(format(c['peak'], '.1f') + ' GiB' if c else '--'):>12s}")
+        w.append(f"  peak   {lab:15s}" + "".join(cells))
+    cells = []
+    for L in LENGTHS:
+        c = d.get(("snapkv+rescue", L))
+        cells.append(f"{(format(c['kv'], '.1f') + ' MB' if c else '--'):>12s}")
+    w.append("  " + f"{'decode KV, either arm':22s}" + "".join(cells))
+    w.append("\n  documents per cell: " + str(sorted({c["n"] for c in d.values()})))
+    return "\n".join(w)
 
 
-def latex(model: str) -> str:
-    rs = list(rows(model))
+def latex() -> str:
+    d = load()
     out = [latex_header(
-        "Selector behaviour by the size of its own margin, over the deciding documents "
-        "that carry a logged margin, in equal fifths. Accuracy is agreement with "
-        "hindsight; the gain is realized points per document, which is zero on a "
-        "rejection by construction.",
-        "tab:selector_margin", "lrrrr"),
-        r"\textbf{Margin quintile} & \textbf{Range} & \textbf{Accuracy} & "
-        r"\textbf{Accepts} & \textbf{Gain / doc} \\", r"\midrule"]
-    names = {1: "Q1 (smallest)", 5: f"Q{QUINTILES} (largest)"}
-    for q, lo, hi, _n, acc, accept, gain in rs:
-        if q is None:
-            out.append(r"\midrule")
-            out.append(f"All & --- & ${acc:.1f}\\%$ & ${accept:.1f}\\%$ & ${gain:+.2f}$ \\\\")
-            continue
-        rng = (f"$<{hi:.1e}$" if q == 1 else
-               f"$>{lo:.1e}$" if q == QUINTILES else f"${lo:.1e}$--${hi:.1e}$")
-        bold = (lambda x: f"$\\mathbf{{{x}}}$") if q == QUINTILES else (lambda x: f"${x}$")
-        out.append(f"{names.get(q, f'Q{q}')} & {rng} & {bold(f'{acc:.1f}')}\\% & "
-                   f"${accept:.1f}\\%$ & {bold(f'{gain:+.2f}')} \\\\")
+        "RULER \\texttt{niah\\_single\\_2} at $B=128$, median over $100$ documents. "
+        "``Added'' is eviction- and selection-related logic; ``decode KV'' is the cache "
+        "generation actually runs against.",
+        "tab:memscale", "llccc"),
+        " & & " + " & ".join(f"\\textbf{{{L}K}}" for L in LENGTHS) + r" \\", r"\midrule",
+        r"\multirow{3}{*}{Added logic}"]
+    for arm in ("snapkv", "snapkv+rescue", "rkv+rescue"):
+        c = [d.get((arm, L)) for L in LENGTHS]
+        vals = " & ".join(
+            (f"${x['added'] / 1000:.1f}$\\,s" if x and x["added"] >= 1000
+             else (f"${x['added']:.0f}$\\,ms" if x else "--")) for x in c)
+        out.append(f" & {LABEL[arm]:17s} & {vals} \\\\")
+    out.append(r"\addlinespace[2pt]")
+    out.append(r"\multirow{2}{*}{Peak memory}")
+    for arm in ("snapkv", "snapkv+rescue"):
+        c = [d.get((arm, L)) for L in LENGTHS]
+        out.append(f" & {LABEL[arm]:17s} & "
+                   + " & ".join(f"${x['peak']:.1f}$\\,GiB" if x else "--" for x in c) + r" \\")
+    out.append(r"\addlinespace[2pt]")
+    c = [d.get(("snapkv+rescue", L)) for L in LENGTHS]
+    out.append(r"\multicolumn{2}{l}{Decode KV, either arm} & "
+               + " & ".join(f"${x['kv']:.1f}$\\,MB" if x else "--" for x in c) + r" \\")
     out.append(LATEX_FOOTER)
     return "\n".join(out)
 
@@ -109,11 +102,10 @@ def latex(model: str) -> str:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--model", default="llama3_8b")
     p.add_argument("--format", choices=["latex", "text"], default="latex")
     p.add_argument("--out", type=Path)
     args = p.parse_args()
-    write(args.out, latex(args.model) if args.format == "latex" else text(args.model))
+    write(args.out, latex() if args.format == "latex" else text())
 
 
 if __name__ == "__main__":

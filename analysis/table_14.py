@@ -1,76 +1,76 @@
 #!/usr/bin/env python
-"""Table 14 (tab:kslot).
+"""Table 14 (tab:runtime_overhead). What the selector costs, and where.
 
-Bounding the blast radius: restrict the correction to k contested slots.
+RESCUE is about twice the most expensive predicted-future method it is compared
+against, not less than it: this is accuracy bought with latency, not latency
+saved. Almost none of the cost is the scorer -- it is building and replaying one
+pruned cache per candidate lambda, which is why the number of candidates, not
+the size of the model, is what the cost scales with.
 
-The obvious way to make a correction safe is to bound how much of the cache it
-may change -- reserve the base policy's top-(B-k) outright and let the corrected
-score compete only for the remaining k. A bad correction then costs at most k
-entries.
+Read from results/latency.csv, which scripts/run_latency.sh regenerates.
 
-It does not pay, and the reason is worth recording: bounding the damage at k
-entries also bounds the benefit at k entries, whereas the selector rejects the
-correction entirely on the documents where it would hurt and leaves it
-unbounded on the rest. The restriction duplicates the selector's job and does
-it worse.
-
-    python analysis/table_12.py --format text
+    python analysis/table_14.py --format text
 """
 from __future__ import annotations
 
 import argparse
+import csv
 from pathlib import Path
 
-from data import BASE_LABEL, LATEX_FOOTER, Scores, TASK_LABEL, latex_header, write
+from data import LATEX_FOOTER, REPO_ROOT, latex_header, write
 
-KS = (16, 32, 64)
-CELLS = [("snapkv", "qasper"), ("snapkv", "trec"), ("rkv", "qasper"), ("rkv", "trec")]
+LATENCY = REPO_ROOT / "results" / "latency.csv"
+ROWS = [
+    ("snapkv", "", "total", "SnapKV", 0),
+    ("lookaheadkv", "", "total", "LookaheadKV$^{\\dagger}$", 0),
+    ("foresightkv", "", "total", "ForesightKV", 0),
+    ("rescue_corr", "", "total", "RESCUE correction only", 0),
+    ("rescue", "1", "total", "RESCUE + 1-token selector", 0),
+    ("rescue", "1", "probe", "dense probe", 1),
+    ("rescue", "1", "candidates", "two candidate caches", 1),
+]
 
 
-def rows(sc: Scores, model: str):
-    for b, t in CELLS:
-        base = sc.get(model, "base", b, 128, t)
-        if base is None:
+def load() -> dict[tuple[str, str, str], float]:
+    if not LATENCY.exists():
+        raise SystemExit(f"{LATENCY} not found; run scripts/run_latency.sh")
+    out = {}
+    with open(LATENCY, encoding="utf-8") as fh:
+        for r in csv.DictReader(line for line in fh if not line.startswith("#")):
+            out[(r["method"], r["probe_len"], r["component"])] = float(r["ms"])
+    return out
+
+
+def text() -> str:
+    d = load()
+    lines = ["Added logic per document, median, Llama-3.1-8B-Instruct on Qasper",
+             f"  {'method':34s} {'ms':>8s}"]
+    for method, probe, comp, label, indent in ROWS:
+        v = d.get((method, probe, comp))
+        if v is None:
             continue
-        gains = [(k, v - base if (v := sc.get(model, f"kslot{k}", b, 128, t)) is not None
-                  else None) for k in KS]
-        full = sc.get(model, "rescue", b, 128, t)
-        yield b, t, base, gains, (full - base if full is not None else None)
-
-
-def text(sc: Scores, model: str) -> str:
-    lines = [f"{model}  --  correction restricted to k contested slots, B=128",
-             f"  {'base':8s} {'task':10s} {'base':>7s}" +
-             "".join(f"{f'k={k}':>9s}" for k in KS) + f" {'unrestricted':>13s}"]
-    for b, t, base, gains, full in rows(sc, model):
-        cells = "".join(f"{g:+9.2f}" if g is not None else f"{'--':>9s}" for _k, g in gains)
-        f = f"{full:+13.2f}" if full is not None else f"{'--':>13s}"
-        lines.append(f"  {BASE_LABEL[b]:8s} {TASK_LABEL[t]:10s} {base:7.2f}{cells}{f}")
+        lines.append(f"  {'  ' * indent + label:34s} {v:8.1f}")
     return "\n".join(lines)
 
 
-def latex(sc: Scores, model: str) -> str:
+def latex() -> str:
+    d = load()
     out = [latex_header(
-        "Restricting the correction to $k$ contested slots, against the unrestricted "
-        "correction, at a $128$-token budget. Entries are gains over the corresponding "
-        "base policy; the selector is left on throughout.",
-        "tab:kslot", "llc" + "c" * len(KS) + "c"),
-        r"\textbf{Base} & \textbf{Task} & \textbf{Base score} & " +
-        " & ".join(f"$k{{=}}{k}$" for k in KS) + r" & \textbf{Unrestricted} \\",
-        r"\midrule"]
-    for b, t, base, gains, full in rows(sc, model):
-        vals = [g for _k, g in gains if g is not None] + ([full] if full is not None else [])
-        best = max(vals) if vals else None
-        cells = []
-        for _k, g in gains:
-            if g is None:
-                cells.append(r"\LBmissing")
-            else:
-                cells.append(f"$\\mathbf{{{g:+.2f}}}$" if g == best else f"${g:+.2f}$")
-        f = (r"\LBmissing" if full is None else
-             f"$\\mathbf{{{full:+.2f}}}$" if full == best else f"${full:+.2f}$")
-        out.append(f"{BASE_LABEL[b]} & {TASK_LABEL[t]} & {base:.2f} & "
-                   + " & ".join(cells) + f" & {f} \\\\")
+        "Eviction- and selection-related latency per document, median over $200$ Qasper "
+        "documents at $\\sim$5K tokens on Llama-3.1-8B-Instruct. Prefill and generation "
+        "are excluded; see the latency protocol for what the interval covers. "
+        "$^{\\dagger}$LookaheadKV runs its own decoder path, so its figure is measured "
+        "differently and is not directly comparable.",
+        "tab:runtime_overhead", "lr"),
+        r"\textbf{Method} & \textbf{Latency} \\", r"\midrule"]
+    for method, probe, comp, label, indent in ROWS:
+        v = d.get((method, probe, comp))
+        if v is None:
+            continue
+        if indent:
+            out.append(f"\\quad \\emph{{{label}}} & \\emph{{{v:.1f} ms}} \\\\")
+        else:
+            out.append(f"{label} & {v:.1f} ms \\\\")
     out.append(LATEX_FOOTER)
     return "\n".join(out)
 
@@ -78,12 +78,10 @@ def latex(sc: Scores, model: str) -> str:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--model", default="llama3_8b")
     p.add_argument("--format", choices=["latex", "text"], default="latex")
     p.add_argument("--out", type=Path)
     args = p.parse_args()
-    sc = Scores()
-    write(args.out, latex(sc, args.model) if args.format == "latex" else text(sc, args.model))
+    write(args.out, latex() if args.format == "latex" else text())
 
 
 if __name__ == "__main__":

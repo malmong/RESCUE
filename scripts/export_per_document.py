@@ -91,6 +91,19 @@ SEL_STEM = {
 # Cells re-run under their own name after a fix; same flags, same checkpoint.
 ALT = {("rkv", "narrativeqa"): f"{P}{RFC}recentrkv-scale_additive-fidelity0_1p1-p128_nq_rkv_fid",
        ("h2o", "narrativeqa"): f"{P}{RFC}recenth2o-scale_additive-fidelity0_1p1-p128_nq_h2o_fid"}
+# The selector SCORES come from the llfloor re-run, which is the protocol the
+# paper reports (the abstention floor enabled on every backbone). The KL
+# MARGINS do not exist in that run -- it was launched without gate logging --
+# so they are read from SEL_STEM above, which is the same probe on the same
+# documents and differs only in what it does when both candidates fall below
+# the floor: 24 of 19,562 logged decisions. The two are joined per document.
+FLOOR_STEM = {
+    "snapkv": f"{P}{RFC}recentsnapkv-scale_additive-fidelity0_1p1-llfloor_snapkv",
+    "laprox": f"{P}{RFC}global_layer-recentlaprox-scale_additive-fidelity0_1p1-llfloor_laprox",
+    "lava": f"{P}{RFC}recentlava-scale_additive-fidelity0_1p1-llfloor_lava",
+    "rkv": f"{P}{RFC}recentrkv-scale_additive-fidelity0_1p1-llfloor_rkv",
+    "h2o": f"{P}{RFC}recenth2o-scale_additive-fidelity0_1p1-llfloor_h2o",
+}
 
 
 def corr_stem(base: str) -> str:
@@ -161,10 +174,10 @@ def main() -> None:
     rows = []
     for base in BASE_STEM:
         for task in TASKS:
-            sel = ALT.get((base, task), SEL_STEM[base])
+            sel = ALT.get((base, task), SEL_STEM[base])   # gate logs live here
             db = details(args.runs, BASE_STEM[base], task)
             dc = details(args.runs, corr_stem(base), task)
-            df = details(args.runs, sel, task)
+            df = details(args.runs, FLOOR_STEM[base], task) or details(args.runs, sel, task)
             if not (db and dc and df):
                 continue
             keys = sorted(set(db) & set(dc) & set(df),

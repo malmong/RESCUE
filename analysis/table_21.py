@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Table 11 (tab:probe_length).
+"""Table 21 (tab:probe_length).
 
 Probe length: how many tokens the selector decodes before it decides.
 
@@ -13,7 +13,7 @@ The latency column is read from ``results/latency.csv`` when that file is
 present; it is measurement, not arithmetic over scores, so it is absent from a
 checkout that has not run ``scripts/run_latency.sh``.
 
-    python analysis/table_10.py --format text
+    python analysis/table_21.py --format text
 """
 from __future__ import annotations
 

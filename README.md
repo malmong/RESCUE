@@ -37,13 +37,13 @@ GPU:
 ```bash
 pip install -r requirements.txt
 
-# every table in the paper, numbered as the paper numbers them
+# tables that have a script, numbered as the paper numbers them
 python analysis/table_1.py  --format text     # LongBench, all three backbones
 python analysis/table_2.py  --format text     # correction vs. selector ablation
-python analysis/table_7.py  --format text     # budget sweep
-python analysis/table_3.py  --format text     # accuracy against cost
-python analysis/table_12.py --format text     # cache-selection control
-for n in $(seq 1 16); do
+python analysis/table_5.py  --format text     # budget sweep
+python analysis/table_8.py  --format text     # accuracy against cost
+python analysis/table_18.py --format text     # cache-selection control
+for n in 1 2 4 5 8 9 10 12 14 15 18 19 20 21 22 24; do
     python analysis/table_$n.py --out analysis/out/table_$n.tex
 done
 
@@ -55,6 +55,13 @@ python analysis/figure_4.py    # per-cell and per-document verification
 Figure 2 is the architecture diagram and has no script. One further table,
 `analysis/appendix_lambda_candidates.py`, renders a comparison the paper
 reports as prose rather than as a numbered table.
+
+Sixteen of the paper's twenty-four tables have a script here. The eight that do
+not --- the per-task LongBench grid (3), the RULER tables (6, 11), throughput
+(7), the memory and latency scaling table (13), the two abstention-floor tables
+(16, 17) and the seed/target table (23) --- are read from `results/scores.csv`
+and `scripts/measurements/` directly; `tests/test_numbering.py` lists them so
+the gap is visible rather than implied.
 
 Table numbers shift whenever a table is added to the body, so
 `python tests/test_numbering.py --tex paper.tex` checks that every

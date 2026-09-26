@@ -1,76 +1,103 @@
 #!/usr/bin/env python
-"""Table 8 (tab:headroom).
+"""Table 8 (tab:pareto). Accuracy against cost, next to simply raising the budget.
 
-How much of the reachable headroom does the correction actually take?
+The comparison a deployment faces is not RESCUE against another eviction rule at
+the same budget, but RESCUE against spending the same resources on a larger
+cache. Putting both on the same axes is not favourable and the table says so:
+a deployment that can afford twice the cache should spend it there.
 
-A raw gain says nothing about whether a task was hard. The ceiling here is the
-same correction driven by *real* future attention, read off an un-evicted
-reference generation: an oracle over the signal, at the same budget and with
-the same combination rule, so the gap to it is what a perfect predictor of
-future importance would be worth.
+What it also shows is where that stops. RESCUE's overhead is flat in the budget
+-- the cost is building and replaying the candidate caches, which scales with
+the prompt rather than with how much of it is kept -- while the gain is not. The
+same fixed price buys less and less, which is what fixes the operating point.
 
-Recovery is `(RESCUE - base) / (oracle - base)`, undefined where the correction
-loses ground.
+Latency comes from results/latency.csv; scores from results/scores.csv.
 
-    python analysis/table_7.py --format text
+    python analysis/table_8.py --format text
 """
 from __future__ import annotations
 
 import argparse
+import csv
 import statistics as st
 from pathlib import Path
 
-from data import (BASES, LATEX_FOOTER, Scores, TASK_LABEL, latex_header, write)
-from rescue.models import LONGBENCH_TASKS
+from data import LATEX_FOOTER, REPO_ROOT, Scores, latex_header, write
 
-ORACLE_BASE = "snapkv"     # the oracle run is scored on one base policy
+LATENCY = REPO_ROOT / "results" / "latency.csv"
+BASE = "snapkv"
+BUDGETS = (128, 256, 1024)
 
 
-def rows(sc: Scores, model: str):
-    out = []
-    for t in LONGBENCH_TASKS:
-        orc = sc.get(model, "oracle_future", ORACLE_BASE, 128, t)
-        if orc is None:
-            continue
-        base = [sc.get(model, "base", b, 128, t) for b in BASES]
-        resc = [sc.get(model, "rescue", b, 128, t) for b in BASES]
-        if any(x is None for x in base + resc):
-            continue
-        b, r = st.mean(base), st.mean(resc)
-        out.append((t, orc, b, orc - b, r - b))
-    out.sort(key=lambda x: -x[3])
+def latency() -> dict[tuple[str, int], float]:
+    """Median added logic per document, by (arm, budget)."""
+    if not LATENCY.exists():
+        raise SystemExit(f"{LATENCY} not found; run scripts/run_latency.sh")
+    out: dict[tuple[str, int], float] = {}
+    with open(LATENCY, encoding="utf-8") as fh:
+        for r in csv.DictReader(l for l in fh if not l.startswith("#")):
+            arm = "base" if r["method"] == "snapkv" else (
+                "rescue" if r["method"] == "rescue" else None)
+            if arm is None:
+                continue
+            # rescue has a `total` row per probe length; this table is the
+            # shipped one-token selector.
+            if arm == "rescue" and r["probe_len"] not in ("", "1"):
+                continue
+            comp = r["component"]
+            if comp == "total":
+                out[(arm, 128)] = float(r["ms"])
+            elif comp.startswith("total_b"):
+                out[(arm, int(comp.removeprefix("total_b")))] = float(r["ms"])
     return out
 
 
+def rows(sc: Scores, model: str):
+    lat = latency()
+    for arm, label in (("base", "SnapKV"), ("rescue", "RESCUE")):
+        for b in BUDGETS:
+            vals = sc.sweep(model, arm, BASE, b)
+            if not vals:
+                continue
+            yield label, b, st.mean(list(vals.values())), lat.get((arm, b))
+
+
 def text(sc: Scores, model: str) -> str:
-    rs = rows(sc, model)
-    if not rs:
-        return "oracle run absent from results/scores.csv"
-    lines = [f"{model}  --  headroom against an oracle future signal, B=128",
-             f"  {'task':21s} {'oracle':>7s} {'base':>7s} {'headroom':>9s} {'gain':>7s} {'recovery':>9s}"]
-    for t, orc, b, head, gain in rs:
-        rec = f"{100 * gain / head:8.1f}%" if head > 1e-9 and gain > 0 else "       --"
-        lines.append(f"  {TASK_LABEL[t]:21s} {orc:7.2f} {b:7.2f} {head:9.2f} {gain:+7.2f} {rec}")
-    heads = [h for *_, h, _ in rs]
-    gains = [g for *_, g in rs]
-    lines.append(f"\n  mean headroom {st.mean(heads):.2f}, mean gain {st.mean(gains):+.2f}"
-                 f"  -- overall recovery {100 * st.mean(gains) / st.mean(heads):.1f}%")
+    rs = list(rows(sc, model))
+    lines = [f"{model}  --  accuracy against cost, SnapKV base",
+             f"  {'method':8s} {'B':>5s} {'score':>7s} {'added logic':>12s} {'retained':>9s}"]
+    for label, b, s_, ms in rs:
+        lines.append(f"  {label:8s} {b:5d} {s_:7.2f} "
+                     f"{'--' if ms is None else f'{ms:.1f} ms':>12s} {b:9d}")
+    ref = [r for r in rs if r[0] == "RESCUE" and r[1] == 128]
+    if ref:
+        _, _, rs_, rt = ref[0]
+        lines.append("\n  against RESCUE at B=128:")
+        for label, b, s_, ms in rs:
+            if (label, b) == ("RESCUE", 128) or ms is None:
+                continue
+            lines.append(f"    {label}@{b:<5d} score {s_ - rs_:+6.2f}   "
+                         f"latency {ms - rt:+8.1f} ms   cache {b / 128:.0f}x")
     return "\n".join(lines)
 
 
 def latex(sc: Scores, model: str) -> str:
+    rs = list(rows(sc, model))
+    best = max(s_ for _l, _b, s_, _m in rs)
     out = [latex_header(
-        "Headroom against an oracle future signal at a 128-token budget. The oracle "
-        "runs the same correction on real future attention taken from an un-evicted "
-        "reference generation; base and RESCUE are averaged over the five base policies. "
-        "Recovery is the share of the gap that the learned correction takes.",
-        "tab:headroom", "lrrrr"),
-        r"\textbf{Task} & \textbf{Oracle} & \textbf{Base (mean)} & \textbf{Headroom} "
-        r"& \textbf{RESCUE $\Delta$ (recovery)} \\", r"\midrule"]
-    for t, orc, b, head, gain in rows(sc, model):
-        rec = f"({100 * gain / head:.1f}\\%)" if head > 1e-9 and gain > 0 else "(--)"
-        out.append(f"{TASK_LABEL[t]} & {orc:.2f} & {b:.2f} & {head:.2f} & "
-                   f"${gain:+.2f}$ \; {rec} \\\\")
+        "Accuracy against cost, with SnapKV as the base. Scores are the 16-task LongBench "
+        "mean; added logic is the median eviction- and selection-related latency per "
+        "document on Qasper. Retained entries per layer is what the cache costs for the "
+        "whole of decoding.",
+        "tab:pareto", "lrrr"),
+        r"\textbf{Method} & \textbf{Score} & \textbf{Added logic} & "
+        r"\textbf{Retained / layer} \\", r"\midrule"]
+    for i, (label, b, s_, ms) in enumerate(rs):
+        if i and rs[i - 1][0] != label:
+            out.append(r"\midrule")
+        cell = f"\\textbf{{{s_:.2f}}}" if s_ == best else f"{s_:.2f}"
+        lat = "--" if ms is None else f"{ms:.1f}" + r"\,ms"
+        out.append(f"{label}, $B{{=}}{b}$ & {cell} & {lat} & {b} \\\\")
     out.append(LATEX_FOOTER)
     return "\n".join(out)
 
