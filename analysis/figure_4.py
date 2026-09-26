@@ -29,12 +29,15 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from style import REPO_ROOT, save  # noqa: E402
 from data import BASES, BASE_LABEL, Scores  # noqa: E402
+
+# The figure uses the short policy names; the tables carry the qualifier.
+SHORT = dict(BASE_LABEL, h2o="H2O")
 from rescue.models import LONGBENCH_TASKS  # noqa: E402
 
 PER_DOC = REPO_ROOT / "results" / "per_document.csv"
 TOL = 1e-9
-ORDER = [BASE_LABEL[b] for b in ("snapkv", "laprox", "lava", "rkv", "h2o")]
-KEY = {v: k for k, v in BASE_LABEL.items()}
+ORDER = [SHORT[b] for b in ("snapkv", "laprox", "lava", "rkv", "h2o")]
+KEY = {v: k for k, v in SHORT.items()}
 
 
 def load_cells() -> list:
@@ -74,7 +77,7 @@ def load_quadrants() -> dict:
             right = (c > b) == near_c
             quad[f"{int(near_c)}{int(right)}"]["mag"].append(abs(c - b))
             quad[f"{int(near_c)}{int(right)}"]["contrib"].append((c - b) if near_c else 0.0)
-            pb = per_base[BASE_LABEL[r["base"]]]
+            pb = per_base[SHORT[r["base"]]]
             pb["dec"] += 1
             pb["acc"] += int(near_c)
             pb["net"].append((c - b) if near_c else 0.0)
@@ -107,12 +110,14 @@ plt.rcParams.update({"font.family": "serif",
                      "font.size": 15, "axes.linewidth": 1.0,
                      "mathtext.fontset": "cm"})
 
-# Keyed by the policy key, not by its printed label, so a change to how the
-# label reads (H2O carries an "(evict-once)" qualifier in the tables) does not
-# silently drop a series here.
+# The figure uses the short policy names: the legend sits inside the axes and
+# the longer "H2O (evict-once)" widens its box far enough to cover the
+# "worst -2.17" annotation. The qualifier is carried by the tables and the
+# caption instead. Keyed by the policy key, not by the printed label, so a
+# later rename cannot silently drop a series.
 _COL_BY_KEY = {"snapkv": "#9ecae1", "laprox": "#4292c6", "lava": "#2171b5",
                "rkv": "#08306b", "h2o": "#e08214"}
-COL = {BASE_LABEL[k]: v for k, v in _COL_BY_KEY.items()}
+COL = {SHORT[k]: v for k, v in _COL_BY_KEY.items()}
 
 fig,(ax,axR)=plt.subplots(1,2,figsize=(11.6,5.54),gridspec_kw={"width_ratios":[1,0.96]})
 lim_lo,lim_hi=-10.4,13.2

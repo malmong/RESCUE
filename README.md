@@ -43,7 +43,7 @@ python analysis/table_2.py  --format text     # correction vs. selector ablation
 python analysis/table_5.py                    # budget sweep, per task
 python analysis/table_7.py  --format text     # accuracy against cost
 python analysis/table_18.py --format text     # cache-selection control
-for n in 1 2 4 5 7 9 10 12 13 14 15 18 19 20 21 22 24; do
+for n in 1 2 4 5 7 9 10 12 13 14 15 18 19 20 21 22 23 25; do
     python analysis/table_$n.py --out analysis/out/table_$n.tex
 done
 
@@ -56,9 +56,9 @@ Figure 2 is the architecture diagram and has no script. One further table,
 `analysis/appendix_lambda_candidates.py`, renders a comparison the paper
 reports as prose rather than as a numbered table.
 
-Seventeen of the paper's twenty-four tables have a script here. The seven that
+Eighteen of the paper's twenty-five tables have a script here. The seven that
 do not --- the per-task LongBench grid (3), the RULER tables (6, 11), throughput
-(8), the two abstention-floor tables (16, 17) and the seed/target table (23) ---
+(8), the two abstention-floor tables (16, 17) and the seed/target table (24) ---
 are read from `results/scores.csv` and `scripts/measurements/` directly;
 `tests/test_numbering.py` lists them so the gap is visible rather than implied.
 

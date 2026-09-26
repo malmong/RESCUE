@@ -1,76 +1,138 @@
 #!/usr/bin/env python
-"""Table 22 (tab:kslot).
+"""Table 22 (tab:probe_length).
 
-Bounding the blast radius: restrict the correction to k contested slots.
+Probe length: how many tokens the selector decodes before it decides.
 
-The obvious way to make a correction safe is to bound how much of the cache it
-may change -- reserve the base policy's top-(B-k) outright and let the corrected
-score compete only for the remaining k. A bad correction then costs at most k
-entries.
+The probe is the selector's only cost that scales with a setting, so its length
+is the one knob with a direct latency consequence. It is swept on LaProx and
+SnapKV over all sixteen tasks, and the table reports the gain averaged over
+both, the worst single cell, and a two-sided sign test of each length against a
+single token over the paired cells.
 
-It does not pay, and the reason is worth recording: bounding the damage at k
-entries also bounds the benefit at k entries, whereas the selector rejects the
-correction entirely on the documents where it would hurt and leaves it
-unbounded on the rest. The restriction duplicates the selector's job and does
-it worse.
+The latency column is read from ``results/latency.csv`` when that file is
+present; it is measurement, not arithmetic over scores, so it is absent from a
+checkout that has not run ``scripts/run_latency.sh``.
 
     python analysis/table_22.py --format text
 """
 from __future__ import annotations
 
 import argparse
+import csv
+import statistics as st
+from math import comb
 from pathlib import Path
 
-from data import BASE_LABEL, LATEX_FOOTER, Scores, TASK_LABEL, latex_header, write
+from data import (BASE_LABEL, LATEX_FOOTER, REPO_ROOT, Scores, latex_header,
+                    write)
 
-KS = (16, 32, 64)
-CELLS = [("snapkv", "qasper"), ("snapkv", "trec"), ("rkv", "qasper"), ("rkv", "trec")]
+LENGTHS = [(1, "rescue"), (2, "probe2"), (4, "probe4"), (8, "probe8")]
+SWEPT = ("laprox", "snapkv")
+LATENCY = REPO_ROOT / "results" / "latency.csv"
+
+
+# A cell whose gain moves by less than this is a tie, not a win. LongBench
+# scores are reported to two decimals and several tasks move in fixed steps
+# (TREC in units of 0.5, PassageCount in 0.05), so without a dead zone the
+# sign test counts quantisation as evidence.
+TIE = 0.05
+
+
+def sign_test(pairs: list[tuple[float, float]]) -> tuple[float | None, int, int, int]:
+    """Two-sided sign test: how often does the longer probe beat one token?
+
+    Returns (p, wins, losses, ties).
+    """
+    wins = sum(1 for a, b in pairs if b > a + TIE)
+    losses = sum(1 for a, b in pairs if b < a - TIE)
+    ties = len(pairs) - wins - losses
+    n = wins + losses
+    if n == 0:
+        return None, wins, losses, ties
+    k = min(wins, losses)
+    tail = sum(comb(n, i) for i in range(k + 1)) / (2 ** n)
+    return min(1.0, 2 * tail), wins, losses, ties
+
+
+def deltas(sc: Scores, model: str, arm: str) -> list[tuple[str, str, float]]:
+    """Per-cell gain over the same base policy, across the swept bases."""
+    out = []
+    for b in SWEPT:
+        for t, base, v in sc.paired(model, "base", arm, b):
+            out.append((b, t, v - base))
+    return out
+
+
+def latency() -> dict[int, float]:
+    if not LATENCY.exists():
+        return {}
+    out = {}
+    with open(LATENCY, encoding="utf-8") as fh:
+        for r in csv.DictReader(line for line in fh if not line.startswith("#")):
+            if r.get("component") == "total" and r.get("probe_len"):
+                out[int(r["probe_len"])] = float(r["ms"])
+    return out
 
 
 def rows(sc: Scores, model: str):
-    for b, t in CELLS:
-        base = sc.get(model, "base", b, 128, t)
-        if base is None:
+    ref = {(b, t): d for b, t, d in deltas(sc, model, "rescue")}
+    lat = latency()
+    for n, arm in LENGTHS:
+        d = deltas(sc, model, arm)
+        if not d:
+            yield n, None, None, None, None, lat.get(n)
             continue
-        gains = [(k, v - base if (v := sc.get(model, f"kslot{k}", b, 128, t)) is not None
-                  else None) for k in KS]
-        full = sc.get(model, "rescue", b, 128, t)
-        yield b, t, base, gains, (full - base if full is not None else None)
+        vals = [x for *_, x in d]
+        pairs = [(ref[(b, t)], x) for b, t, x in d if (b, t) in ref]
+        vs = None if n == 1 else st.mean([y - x for x, y in pairs])
+        wl = None if n == 1 else sign_test(pairs)
+        p = None if wl is None else wl[0]
+        yield n, st.mean(vals), min(vals), vs, p, lat.get(n), wl
 
 
 def text(sc: Scores, model: str) -> str:
-    lines = [f"{model}  --  correction restricted to k contested slots, B=128",
-             f"  {'base':8s} {'task':10s} {'base':>7s}" +
-             "".join(f"{f'k={k}':>9s}" for k in KS) + f" {'unrestricted':>13s}"]
-    for b, t, base, gains, full in rows(sc, model):
-        cells = "".join(f"{g:+9.2f}" if g is not None else f"{'--':>9s}" for _k, g in gains)
-        f = f"{full:+13.2f}" if full is not None else f"{'--':>13s}"
-        lines.append(f"  {BASE_LABEL[b]:8s} {TASK_LABEL[t]:10s} {base:7.2f}{cells}{f}")
+    lines = [f"{model}  --  selector probe length",
+             f"  {'probe':>6s} {'avg gain':>9s} {'worst':>8s} {'vs p=1':>8s} "
+             f"{'W/L/T':>10s} {'sign':>7s} {'ms':>8s}"]
+    for n, avg, worst, vs, p, ms, wl in rows(sc, model):
+        if avg is None:
+            lines.append(f"  {n:6d}   (absent from results/scores.csv)")
+            continue
+        rec = "--" if wl is None else f"{wl[1]}/{wl[2]}/{wl[3]}"
+        lines.append(f"  {n:6d} {avg:+9.2f} {worst:+8.2f} "
+                     f"{'--' if vs is None else f'{vs:+.2f}':>8s} {rec:>10s} "
+                     f"{'--' if p is None else f'{p:.3f}':>7s} "
+                     f"{'--' if ms is None else f'{ms:.1f}':>8s}")
+    lines.append("")
+    lines.append("  per base policy:")
+    lines.append(f"    {'base':8s}" + "".join(f"{f'p={n}':>9s}" for n, _ in LENGTHS))
+    for b in SWEPT:
+        row = [f"    {BASE_LABEL[b]:8s}"]
+        for _n, arm in LENGTHS:
+            pair = sc.paired(model, "base", arm, b)
+            row.append(f"{st.mean([v - u for _, u, v in pair]):+9.2f}" if pair else f"{'--':>9s}")
+        lines.append("".join(row))
     return "\n".join(lines)
 
 
 def latex(sc: Scores, model: str) -> str:
     out = [latex_header(
-        "Restricting the correction to $k$ contested slots, against the unrestricted "
-        "correction, at a $128$-token budget. Entries are gains over the corresponding "
-        "base policy; the selector is left on throughout.",
-        "tab:kslot", "llc" + "c" * len(KS) + "c"),
-        r"\textbf{Base} & \textbf{Task} & \textbf{Base score} & " +
-        " & ".join(f"$k{{=}}{k}$" for k in KS) + r" & \textbf{Unrestricted} \\",
+        "Selector probe length, on LaProx and SnapKV over all sixteen tasks. The gain "
+        "is against the same base policy at a 128-token budget; the sign test is "
+        "two-sided over the paired cells. Longer probes help, and cost proportionally.",
+        "tab:probe_length", "cccccc"),
+        r"\textbf{Probe} & \textbf{Avg.\ gain} & \textbf{Worst drop} & "
+        r"\textbf{vs.\ $p{=}1$} & \textbf{Sign test} & \textbf{Added logic} \\",
         r"\midrule"]
-    for b, t, base, gains, full in rows(sc, model):
-        vals = [g for _k, g in gains if g is not None] + ([full] if full is not None else [])
-        best = max(vals) if vals else None
-        cells = []
-        for _k, g in gains:
-            if g is None:
-                cells.append(r"\LBmissing")
-            else:
-                cells.append(f"$\\mathbf{{{g:+.2f}}}$" if g == best else f"${g:+.2f}$")
-        f = (r"\LBmissing" if full is None else
-             f"$\\mathbf{{{full:+.2f}}}$" if full == best else f"${full:+.2f}$")
-        out.append(f"{BASE_LABEL[b]} & {TASK_LABEL[t]} & {base:.2f} & "
-                   + " & ".join(cells) + f" & {f} \\\\")
+    for n, avg, worst, vs, p, ms, _wl in rows(sc, model):
+        if avg is None:
+            out.append(f"{n} & \\LBmissing & \\LBmissing & \\LBmissing & \\LBmissing & \\LBmissing \\\\")
+            continue
+        cell = (f"\\textbf{{{ms:.1f}\\,ms}}" if (ms is not None and n == 1)
+                else f"{ms:.1f}\\,ms" if ms is not None else r"\LBmissing")
+        out.append(f"{n} & ${avg:+.2f}$ & ${worst:+.2f}$ & "
+                   f"{'--' if vs is None else f'${vs:+.2f}$'} & "
+                   f"{'--' if p is None else f'${p:.3f}$'} & {cell} \\\\")
     out.append(LATEX_FOOTER)
     return "\n".join(out)
 
