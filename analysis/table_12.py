@@ -79,7 +79,14 @@ def latex(sc: Scores, model: str) -> str:
         # worth more than a point and the correction has to have moved towards
         # the oracle. PassageCount's 0.14-point span is the reason for the first
         # test, LCC and RepoBench-P for the second.
-        rec = f"({100 * gain / head:.1f}\\%)" if head > 1.0 and gain > 0 else "(--)"
+        # A negative gain still has a well-defined share of the headroom; "(--)"
+        # is reserved for the one task whose gain exceeds its headroom outright
+        # (PassageCount, +0.37 against 0.14) and for headrooms under a point.
+        if head > 1.0 and gain <= head:
+            pct = 100 * gain / head
+            rec = f"(${pct:+.1f}\\%$)" if gain < 0 else f"({pct:.1f}\\%)"
+        else:
+            rec = "(--)"
         out.append(f"{TASK_LABEL[t]} & {orc:.2f} & {b:.2f} & {head:.2f} & "
                    f"${gain:+.2f}$ \; {rec} \\\\")
     recs = [100 * g / h for *_, h, g in rs if h > 1.0]

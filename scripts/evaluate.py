@@ -69,7 +69,10 @@ def parse_args() -> argparse.Namespace:
                    help="a LongBench task name, or 'all' for the sixteen the paper reports")
     p.add_argument("--base", choices=["snapkv", "laprox", "h2o", "lava", "rkv"],
                    help="--method rescue: which base policy the correction is applied to")
-    p.add_argument("--checkpoint", help="--method rescue: residual scorer weights")
+    p.add_argument("--checkpoint",
+                   help="learned weights: the residual scorer for --method rescue, "
+                        "or the comparator's own released model for foresightkv and "
+                        "lookaheadkv")
     p.add_argument("--budget-tokens", type=int,
                    help="override configs/<model>.yaml budget.total_tokens (the sweep uses 256 and 1024)")
     p.add_argument("--lambdas", default=None,
@@ -223,15 +226,27 @@ def main() -> None:
     args = parse_args()
     cfg = load(args.model)
 
-    if args.method == "rescue":
-        if not args.base:
-            raise SystemExit("--method rescue needs --base")
+    # Three methods carry learned weights. Checked here rather than inside the
+    # generator, which only finds out after the backbone has been loaded and
+    # then raises from a place that does not say what to pass.
+    NEEDS_CHECKPOINT = {
+        "rescue": "the residual scorer, e.g. results/checkpoints/"
+                  f"rescue_{args.model}_<base>.pt",
+        "foresightkv": "ForesightKV's own judge model (judge_models.pt) from the "
+                       "authors' release; it is not vendored here",
+        "lookaheadkv": "LookaheadKV's lookahead_modules.safetensors from the "
+                       "authors' release; it is not vendored here",
+    }
+    if args.method == "rescue" and not args.base:
+        raise SystemExit("--method rescue needs --base")
+    if args.method != "rescue" and args.base:
+        raise SystemExit("--base applies only to --method rescue")
+    if args.method in NEEDS_CHECKPOINT:
         if not args.checkpoint:
-            raise SystemExit("--method rescue needs --checkpoint")
+            raise SystemExit(f"--method {args.method} needs --checkpoint: "
+                             f"{NEEDS_CHECKPOINT[args.method]}")
         if not Path(args.checkpoint).expanduser().exists():
             raise SystemExit(f"checkpoint not found: {args.checkpoint}")
-    elif args.base:
-        raise SystemExit("--base applies only to --method rescue")
 
     tasks = list(LONGBENCH_TASKS) if args.task == "all" else [args.task]
     unknown = [t for t in tasks if t not in LONGBENCH_TASKS]

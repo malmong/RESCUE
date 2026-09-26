@@ -28,6 +28,8 @@ SHORT = {"narrativeqa": "NQA", "qasper": "Qsp", "multifieldqa_en": "MFQA",
          "lcc": "LCC", "repobench": "RB-P"}
 
 
+WIN_MARGIN = 0.05
+
 def text(sc: Scores, models: list[str]) -> str:
     lines = []
     for model in models:
@@ -36,8 +38,11 @@ def text(sc: Scores, models: list[str]) -> str:
             lines.append(f"{MODEL_LABEL[model]}: no cells in results/scores.csv")
             continue
         mean, lo, hi = bootstrap_ci(rows)
-        w = sum(1 for *_, u, v in rows if v > u)
-        l = sum(1 for *_, u, v in rows if v < u)
+        # The paper counts a cell as a win or a loss only past a 0.05-point
+        # margin; anything inside that is a tie, since LongBench scores are
+        # reported to two decimals and smaller gaps are not meaningful.
+        w = sum(1 for *_, u, v in rows if v - u > WIN_MARGIN)
+        l = sum(1 for *_, u, v in rows if u - v > WIN_MARGIN)
         lines.append(f"\n{MODEL_LABEL[model]}   B=128, {len(rows)} cells")
         lines.append(f"  {'base':8s} {'base':>7s} {'+RESCUE':>9s} {'delta':>7s}")
         for b in BASES:

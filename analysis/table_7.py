@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Table 8 (tab:pareto). Accuracy against cost, next to simply raising the budget.
+"""Table 7 (tab:pareto). Accuracy against cost, next to simply raising the budget.
 
 The comparison a deployment faces is not RESCUE against another eviction rule at
 the same budget, but RESCUE against spending the same resources on a larger
@@ -13,7 +13,7 @@ same fixed price buys less and less, which is what fixes the operating point.
 
 Latency comes from results/latency.csv; scores from results/scores.csv.
 
-    python analysis/table_8.py --format text
+    python analysis/table_7.py --format text
 """
 from __future__ import annotations
 

@@ -5,9 +5,9 @@ that recovers what a KV cache eviction policy discards, and a fidelity-guided
 selector that decides, per input, whether to apply the correction at all.
 
 An eviction policy scores cache entries from evidence already visible at
-prefill. That evidence is not the whole story: at a 128-token budget, **32.6%**
-of the entries the model will actually attend to during generation are found
-only by a future-importance signal and not by the observed one. RESCUE trains a
+prefill. That evidence is not the whole story: at a matched budget, **24.6%**
+of the oracle-critical entries are recovered by a future-importance signal alone
+and not by the observed one. RESCUE trains a
 small scorer on exactly that residual — the entries *this* base policy misses —
 and combines it with the base score so that a declined correction reproduces the
 base policy exactly.
@@ -40,10 +40,10 @@ pip install -r requirements.txt
 # tables that have a script, numbered as the paper numbers them
 python analysis/table_1.py  --format text     # LongBench, all three backbones
 python analysis/table_2.py  --format text     # correction vs. selector ablation
-python analysis/table_5.py  --format text     # budget sweep
-python analysis/table_8.py  --format text     # accuracy against cost
+python analysis/table_5.py                    # budget sweep, per task
+python analysis/table_7.py  --format text     # accuracy against cost
 python analysis/table_18.py --format text     # cache-selection control
-for n in 1 2 4 5 8 9 10 12 14 15 18 19 20 21 22 24; do
+for n in 1 2 4 5 7 9 10 12 13 14 15 18 19 20 21 22 24; do
     python analysis/table_$n.py --out analysis/out/table_$n.tex
 done
 
@@ -56,12 +56,11 @@ Figure 2 is the architecture diagram and has no script. One further table,
 `analysis/appendix_lambda_candidates.py`, renders a comparison the paper
 reports as prose rather than as a numbered table.
 
-Sixteen of the paper's twenty-four tables have a script here. The eight that do
-not --- the per-task LongBench grid (3), the RULER tables (6, 11), throughput
-(7), the memory and latency scaling table (13), the two abstention-floor tables
-(16, 17) and the seed/target table (23) --- are read from `results/scores.csv`
-and `scripts/measurements/` directly; `tests/test_numbering.py` lists them so
-the gap is visible rather than implied.
+Seventeen of the paper's twenty-four tables have a script here. The seven that
+do not --- the per-task LongBench grid (3), the RULER tables (6, 11), throughput
+(8), the two abstention-floor tables (16, 17) and the seed/target table (23) ---
+are read from `results/scores.csv` and `scripts/measurements/` directly;
+`tests/test_numbering.py` lists them so the gap is visible rather than implied.
 
 Table numbers shift whenever a table is added to the body, so
 `python tests/test_numbering.py --tex paper.tex` checks that every
@@ -169,13 +168,14 @@ stays closest to the dense one:
 
 Applied unconditionally the correction gains `+0.64` over 80 cells with an
 interval containing zero, and 18 cells lose at least a point. Gated, it gains
-`+1.29` and three cells lose a point.
+`+1.28` and three cells lose a point.
 
 **Selector abstention.** The KL is a sum over the vocabulary of
 `p·(log p − log q)`. In float32 that reduction carries an absolute error around
 `1e-7`, and the true KL falls under it on a large share of documents for some
-models — 62% of PassageRetrieval and 43% of MultiFieldQA-en on Qwen3-8B, against
-0% and 2% on Llama. Below that floor `argmin` is reading rounding noise, and the
+models — 61.5% of PassageRetrieval-en and 42.7% of MultiFieldQA-en on Qwen3-8B,
+against 0.0% of PassageRetrieval-en on Llama, where 0.25% of all probes fall
+below the floor. Below that floor `argmin` is reading rounding noise, and the
 correction gets accepted about half the time for no reason. When every
 candidate's KL is under `rescue.kl_floor` the selector abstains and keeps the
 base cache: no evidence is read as no correction rather than as a coin flip.
@@ -201,8 +201,8 @@ setting rather than streaming or chunked prefill.
 - **Context limits are per model.** Llama-3.1 is 131072, Mistral-v0.3 is 32768,
   Qwen3-8B is 40960, and each config states its own. Feeding a model prompts
   past its trained position range leaves its eviction scores computed from
-  positions it has never seen; on Mistral that moved one task by up to
-  `+3.48` once corrected.
+  positions it has never seen. Correcting that on Mistral moved NarrativeQA and
+  nothing else: `+3.48` on SnapKV, `+2.26` averaged over the five base policies.
 - **Five LongBench tasks never get a chat template** — `trec`, `triviaqa`,
   `samsum`, `lcc`, `repobench` — because their prompts are few-shot
   demonstrations or raw code, and the official harness does not wrap them. This
