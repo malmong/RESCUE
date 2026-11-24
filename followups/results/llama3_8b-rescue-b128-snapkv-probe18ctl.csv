@@ -1,0 +1,5 @@
+task,score
+trec,54.50
+triviaqa,91.31
+samsum,40.08
+lcc,58.57

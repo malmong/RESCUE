@@ -1,0 +1,37 @@
+
+[base policy: h2o]
+task                  out  docs dly8!=dense base!=dense
+2wikimqa               32   200          17          92
+hotpotqa               32   200          11          68
+musique                32   200          21          91
+passage_count          32   200           4          47
+passage_retrieval_en   32   200           1           8
+triviaqa               32   200           4          26
+lcc                    64   500         490         493
+multifieldqa_en        64   150          78         122
+repobench              64   500         492         497
+trec                   64   200           0          52
+narrativeqa           128   200          52         159
+qasper                128   200         134         167
+samsum                128   200         156         185
+gov_report            512   200         200         200
+multi_news            512   200         200         200
+qmsum                 512   200         199         199
+
+===== filter A: documents where the DELAYED arm diverged from dense
+  band   docs  subset  |   base  +RESC   dly8  dly+R  dense   gap closed: +RESC / dly8 / dly+R
+    32   1200      58  |  41.15  39.56  36.39  38.35  41.39   -673.9% -2016.4% -1188.3%
+    64   1350    1060  |  45.81  49.83  53.54  55.56  56.91     36.2%   69.6%   87.8%
+   128    600     342  |  24.32  27.25  27.65  30.61  32.87     34.2%   39.0%   73.5%
+   512    600     599  |  23.60  22.61  23.71  23.26  29.02    -18.2%    2.1%   -6.2%
+   ALL   3750    2059  |  35.21  35.76  35.54  37.22  40.32     10.8%    6.4%   39.4%
+  >=64   2550    2001  |  31.24  33.23  34.97  36.47  39.60     23.7%   44.5%   62.6%
+
+===== filter B: documents where the BASE policy diverged from dense
+  band   docs  subset  |   base  +RESC   dly8  dly+R  dense   gap closed: +RESC / dly8 / dly+R
+    32   1200     332  |  33.53  46.10  49.69  49.87  50.21     75.4%   96.9%   97.9%
+    64   1350    1164  |  34.96  43.12  54.87  55.95  56.82     37.3%   91.1%   96.0%
+   128    600     511  |  26.16  31.02  33.20  35.72  37.50     42.9%   62.1%   84.3%
+   512    600     599  |  23.60  22.61  23.71  23.26  29.02    -18.2%    2.1%   -6.2%
+   ALL   3750    2606  |  30.64  38.13  43.02  43.75  45.51     50.3%   83.3%   88.2%
+  >=64   2550    2274  |  28.91  33.34  39.02  40.07  42.68     32.1%   73.4%   81.1%
